@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getDb } from "./db";
 
-export type AiProvider = "claude" | "gemini" | "ollama";
-export type SecretName = "anthropic" | "gemini" | "adzuna";
+export type AiProvider = "claude" | "deepseek" | "gemini" | "ollama";
+export type SecretName = "anthropic" | "deepseek" | "gemini" | "adzuna";
 
 // Non-secret settings, stored in the settings table. API keys go through the Keychain.
 export interface AppSettings {

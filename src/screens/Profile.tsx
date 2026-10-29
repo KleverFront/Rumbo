@@ -107,17 +107,20 @@ export default function ProfileScreen() {
     setStatus({ kind: "busy", text: "Leyendo su CV con IA…" });
     try {
       const parsed = await parseCvToProfile(cv.raw_text);
-      const personal = { ...profile.personal };
-      for (const f of PROFILE_FIELDS) if (!personal[f].trim()) personal[f] = parsed.personal[f] ?? "";
-      const skills = uniqueCaseInsensitive([...skillsText.split(","), ...parsed.skills]);
-      setProfile({
-        personal,
-        experience: profile.experience.length ? profile.experience : parsed.experience,
-        education: profile.education.length ? profile.education : parsed.education,
-        languages: profile.languages.length ? profile.languages : parsed.languages,
-        skills,
+      // Functional updates: the user may have typed while the AI call was running.
+      setProfile((current) => {
+        if (!current) return current;
+        const personal = { ...current.personal };
+        for (const f of PROFILE_FIELDS) if (!personal[f].trim()) personal[f] = parsed.personal[f];
+        return {
+          ...current,
+          personal,
+          experience: current.experience.length ? current.experience : parsed.experience,
+          education: current.education.length ? current.education : parsed.education,
+          languages: current.languages.length ? current.languages : parsed.languages,
+        };
       });
-      setSkillsText(skills.join(", "));
+      setSkillsText((text) => uniqueCaseInsensitive([...text.split(","), ...parsed.skills]).join(", "));
       setStatus({ kind: "ok", text: "Perfil completado desde su CV. Revíselo y pulse «Guardar perfil»." });
     } catch (e) {
       setStatus({ kind: "error", text: e instanceof Error ? e.message : String(e) });

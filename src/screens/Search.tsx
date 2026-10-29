@@ -97,20 +97,32 @@ export default function Search({ onAdapt }: { onAdapt: (jobId: number) => void }
       description: manual.description.trim(),
       posted_at: null,
     };
-    const [job] = score(await upsertJobs([input]));
-    setResults((r) => [job, ...r.filter((x) => x.job.id !== job.job.id)]);
-    setSelectedId(job.job.id);
-    setManual(null);
+    try {
+      const [job] = score(await upsertJobs([input]));
+      setResults((r) => [job, ...r.filter((x) => x.job.id !== job.job.id)]);
+      setSelectedId(job.job.id);
+      setManual(null);
+    } catch (e) {
+      setNotice(`No se pudo agregar la oferta: ${e}`);
+    }
   }
 
   async function save(s: Scored) {
-    await saveToPipeline(s.job.id, s.match.score);
-    setSavedIds((ids) => new Set(ids).add(s.job.id));
+    try {
+      await saveToPipeline(s.job.id, s.match.score);
+      setSavedIds((ids) => new Set(ids).add(s.job.id));
+    } catch (e) {
+      setNotice(`No se pudo guardar la oferta: ${e}`);
+    }
   }
 
   async function adapt(s: Scored) {
-    await saveToPipeline(s.job.id, s.match.score);
-    onAdapt(s.job.id);
+    try {
+      await saveToPipeline(s.job.id, s.match.score);
+      onAdapt(s.job.id);
+    } catch (e) {
+      setNotice(`No se pudo guardar la oferta: ${e}`);
+    }
   }
 
   const selected = results.find((r) => r.job.id === selectedId) ?? null;

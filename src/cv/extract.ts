@@ -16,7 +16,9 @@ export async function extractCvText(file: File): Promise<string> {
 }
 
 async function extractPdf(data: ArrayBuffer): Promise<string> {
-  const pdf = await getDocument({ data }).promise;
+  // pdfjs v6 frees the document through the loading task, not the document proxy.
+  const task = getDocument({ data });
+  const pdf = await task.promise;
   try {
     const pages: string[] = [];
     for (let i = 1; i <= pdf.numPages; i++) {
@@ -27,6 +29,6 @@ async function extractPdf(data: ArrayBuffer): Promise<string> {
     }
     return pages.join("\n\n").trim();
   } finally {
-    await pdf.destroy();
+    await task.destroy();
   }
 }

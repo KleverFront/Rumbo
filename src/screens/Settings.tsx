@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { CLAUDE_MODELS, DEFAULT_MODELS, monthSpendUsd } from "../ai";
+import { CLAUDE_MODELS, DEFAULT_MODELS, SPEND_LIMIT_PROVIDERS, monthSpendUsd } from "../ai";
 import { getSecret, loadSettings, saveSettings, setSecret, type AiProvider, type AppSettings, type SecretName } from "../settings";
 import { ADZUNA_COUNTRIES } from "../sources";
 
 const PROVIDERS: { id: AiProvider; label: string; secret: SecretName | null; keyUrl?: string }[] = [
   { id: "claude", label: "Claude (Anthropic)", secret: "anthropic", keyUrl: "https://platform.claude.com/settings/keys" },
+  { id: "deepseek", label: "DeepSeek", secret: "deepseek", keyUrl: "https://platform.deepseek.com/api_keys" },
   { id: "gemini", label: "Gemini (Google)", secret: "gemini", keyUrl: "https://aistudio.google.com/apikey" },
   { id: "ollama", label: "Ollama (local, sin internet)", secret: null },
 ];
@@ -33,7 +34,9 @@ export default function Settings() {
 
   useEffect(() => {
     setAiKey("");
-    if (provider.secret) getSecret(provider.secret).then((v) => setHasAiKey(!!v));
+    if (provider.secret) {
+      getSecret(provider.secret).then((v) => setHasAiKey(!!v), (e) => setStatus({ kind: "error", text: `No se pudo leer el Llavero: ${e}` }));
+    }
   }, [provider.secret]);
 
   function changeProvider(id: AiProvider) {
@@ -63,9 +66,13 @@ export default function Settings() {
   }
 
   async function forget(name: SecretName) {
-    await setSecret(name, "");
-    if (name === "adzuna") setHasAdzuna(false);
-    else setHasAiKey(false);
+    try {
+      await setSecret(name, "");
+      if (name === "adzuna") setHasAdzuna(false);
+      else setHasAiKey(false);
+    } catch (e) {
+      setStatus({ kind: "error", text: `No se pudo borrar la clave: ${e}` });
+    }
   }
 
   if (!s) return <section><h2>Ajustes</h2>{status && <p className="status error">{status.text}</p>}</section>;
@@ -113,7 +120,12 @@ export default function Settings() {
             <label><span>Límite de gasto mensual (USD, 0 = sin límite)</span>
               <input type="number" min="0" step="1" value={s.ai_monthly_limit_usd} onChange={(e) => setS({ ...s, ai_monthly_limit_usd: e.target.value })} />
             </label>
-            <div className="kpi"><small>Gastado este mes</small><b>${spent.toFixed(2)}</b></div>
+            <div className="kpi"><small>Gastado este mes en Claude</small><b>${spent.toFixed(2)}</b></div>
+            {!SPEND_LIMIT_PROVIDERS.includes(s.ai_provider) && (
+              <p className="hint wide status error">
+                El límite de gasto solo cuenta el uso de Claude. El consumo de {provider.label} no se suma: revise su gasto en la consola del proveedor.
+              </p>
+            )}
           </div>
         </fieldset>
 

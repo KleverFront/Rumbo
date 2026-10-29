@@ -14,11 +14,11 @@ Local-first: data lives in SQLite under `~/Library/Application Support/com.rumbo
 - **Match & ATS** — computed locally per offer: matched/missing skills and keyword coverage.
 - **Tailored CV** — AI rewrites the CV for one offer without inventing experience; cover letter; PDF export.
 - **Pipeline** — kanban by status; a macOS reminder 7 days after applying.
-- **AI providers** — Claude (default `claude-opus-5-5`, server-side refusal fallback on), Gemini or a local Ollama. Keys in the Keychain; monthly spend limit.
+- **AI providers** — Claude (default `claude-opus-5-5`, server-side refusal fallback on), DeepSeek, Gemini or a local Ollama. Keys in the Keychain; monthly spend limit.
 
 ## Setup inside the app
 
-1. *Ajustes* → paste a Claude API key (or pick Gemini/Ollama). Optional: Adzuna App ID + Key and country.
+1. *Ajustes* → paste a Claude API key (or pick DeepSeek, Gemini or Ollama). Optional: Adzuna App ID + Key and country.
 2. *Mi perfil y CV base* → drop your CV, click *Completar perfil con IA desde el CV*, review, save.
 3. *Buscar ofertas* → search, open an offer, *Adaptar CV*, export the PDF.
 

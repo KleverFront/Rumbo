@@ -4,7 +4,7 @@ pub const DB_URL: &str = "sqlite:rumbo.db";
 
 const KEYCHAIN_SERVICE: &str = "com.rumbo.app";
 // Only these names can be read or written, so the UI cannot touch other Keychain items.
-const SECRET_NAMES: [&str; 3] = ["anthropic", "gemini", "adzuna"];
+const SECRET_NAMES: [&str; 4] = ["anthropic", "deepseek", "gemini", "adzuna"];
 
 fn migrations() -> Vec<Migration> {
     vec![
@@ -58,10 +58,18 @@ fn secret_set(name: String, value: String) -> Result<(), String> {
     entry.set_password(&value).map_err(|e| e.to_string())
 }
 
-/// Writes bytes to a path the user picked in the save dialog.
+/// Writes an exported PDF to the path the user picked in the save dialog.
+/// Limited to absolute .pdf paths so the webview cannot use it to overwrite config or launch files.
 #[tauri::command]
 fn save_file(path: String, bytes: Vec<u8>) -> Result<(), String> {
-    std::fs::write(&path, bytes).map_err(|e| format!("{path}: {e}"))
+    let target = std::path::Path::new(&path);
+    let is_pdf = target
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf"));
+    if !target.is_absolute() || !is_pdf {
+        return Err(format!("only .pdf files can be saved: {path}"));
+    }
+    std::fs::write(target, bytes).map_err(|e| format!("{path}: {e}"))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

@@ -14,7 +14,8 @@ const LABELS: Record<ApplicationStatus, string> = {
 };
 
 // SQLite datetime('now') is UTC without a zone marker.
-const isDue = (c: ApplicationCard) => c.status === "applied" && !!c.follow_up_at && new Date(c.follow_up_at + "Z") <= new Date();
+const isDue = (c: ApplicationCard) =>
+  c.status === "applied" && !!c.follow_up_at && new Date(c.follow_up_at.replace(" ", "T") + "Z") <= new Date();
 
 export default function Pipeline({ onAdapt }: { onAdapt: (jobId: number) => void }) {
   const [cards, setCards] = useState<ApplicationCard[]>([]);
@@ -32,7 +33,11 @@ export default function Pipeline({ onAdapt }: { onAdapt: (jobId: number) => void
   }, []);
 
   async function move(id: number, status: ApplicationStatus) {
-    await setApplicationStatus(id, status);
+    try {
+      await setApplicationStatus(id, status);
+    } catch (e) {
+      setError(String(e));
+    }
     await reload();
   }
 
@@ -57,7 +62,7 @@ export default function Pipeline({ onAdapt }: { onAdapt: (jobId: number) => void
                     {isDue(c) && (
                       <small className="due">
                         Seguimiento pendiente ·{" "}
-                        <button type="button" className="link" onClick={() => postponeFollowUp(c.id).then(reload)}>posponer</button>
+                        <button type="button" className="link" onClick={() => postponeFollowUp(c.id).then(reload, (e) => setError(String(e)))}>posponer</button>
                       </small>
                     )}
                     {c.cv_pdf_path && <small>CV adaptado exportado</small>}

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { adaptCv, coverLetter, tailoredCvText, type TailoredCv } from "../ai";
+import { useEffect, useRef, useState } from "react";
+import { adaptCv, coverLetter, tailoredCvText, toTailoredCv, type TailoredCv } from "../ai";
 import { exportCvPdf, safeFileName } from "../cv/pdf";
 import { getApplicationByJob, getJob, listPipelineJobs, saveTailoredCv, type Job } from "../db";
 import { atsScore } from "../match";
@@ -14,6 +14,9 @@ export default function AdaptCv({ jobId, onPickJob }: { jobId: number | null; on
   const [letter, setLetter] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [status, setStatus] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  // Results that arrive after the user picked another offer are dropped.
+  const currentJob = useRef(jobId);
+  currentJob.current = jobId;
 
   useEffect(() => {
     Promise.all([listPipelineJobs(), loadProfile(), loadBaseCv()])
@@ -26,22 +29,28 @@ export default function AdaptCv({ jobId, onPickJob }: { jobId: number | null; on
     setLetter("");
     setStatus(null);
     if (jobId == null) return setJob(null);
-    getJob(jobId).then(setJob);
-    getApplicationByJob(jobId).then((a) => {
-      if (a?.cv_json) setCv(JSON.parse(a.cv_json));
-      setLetter(a?.cover_letter ?? "");
-    });
+    Promise.all([getJob(jobId), getApplicationByJob(jobId)])
+      .then(([j, a]) => {
+        if (currentJob.current !== jobId) return;
+        setJob(j);
+        if (a?.cv_json) setCv(toTailoredCv(JSON.parse(a.cv_json)));
+        setLetter(a?.cover_letter ?? "");
+      })
+      .catch((e) => setStatus({ kind: "error", text: `No se pudo cargar la oferta: ${e}` }));
   }, [jobId]);
 
   const baseText = [baseCv?.raw_text ?? "", profile?.personal.summary ?? "", ...(profile?.experience.map((e) => e.description) ?? [])].join("\n");
   const jobText = job ? `${job.title}\n${job.description ?? ""}` : "";
   const hasData = !!baseCv || !!profile?.experience.length;
 
+  /** Runs fn for the current offer; returns undefined on error or if the user switched offers meanwhile. */
   async function run<T>(label: string, fn: () => Promise<T>): Promise<T | undefined> {
+    const startedFor = currentJob.current;
     setBusy(label);
     setStatus(null);
     try {
-      return await fn();
+      const result = await fn();
+      return currentJob.current === startedFor ? result : undefined;
     } catch (e) {
       setStatus({ kind: "error", text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -55,7 +64,8 @@ export default function AdaptCv({ jobId, onPickJob }: { jobId: number | null; on
     if (!result) return;
     setCv(result);
     setLetter("");
-    await saveTailoredCv(job.id, { cv_json: JSON.stringify(result), ats_score: atsScore(jobText, tailoredCvText(result)) });
+    await run("Guardando…", () =>
+      saveTailoredCv(job.id, { cv_json: JSON.stringify(result), ats_score: atsScore(jobText, tailoredCvText(result)) }));
   }
 
   async function makeLetter() {
@@ -63,7 +73,7 @@ export default function AdaptCv({ jobId, onPickJob }: { jobId: number | null; on
     const result = await run("Escribiendo la carta…", () => coverLetter(profile, cv, job));
     if (result === undefined) return;
     setLetter(result);
-    await saveTailoredCv(job.id, { cover_letter: result });
+    await run("Guardando…", () => saveTailoredCv(job.id, { cover_letter: result }));
   }
 
   async function exportPdf() {
@@ -72,7 +82,7 @@ export default function AdaptCv({ jobId, onPickJob }: { jobId: number | null; on
       exportCvPdf(cv, profile.personal, safeFileName("CV", profile.personal.full_name, job.company, job.title)),
     );
     if (!path) return;
-    await saveTailoredCv(job.id, { cv_pdf_path: path });
+    await run("Guardando…", () => saveTailoredCv(job.id, { cv_pdf_path: path }));
     setStatus({ kind: "ok", text: `PDF guardado en ${path}` });
   }
 

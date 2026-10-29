@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { getDb, type Job } from "./db";
 import type { Profile } from "./profile";
 import { getSecret, loadSettings, type AiProvider, type AppSettings } from "./settings";
@@ -8,6 +9,7 @@ export type AiTask = "parse_cv" | "adapt_cv" | "cover_letter";
 
 export const DEFAULT_MODELS: Record<AiProvider, string> = {
   claude: "claude-opus-5-5",
+  deepseek: "deepseek-chat",
   gemini: "gemini-2.5-flash",
   ollama: "llama3.1",
 };
@@ -23,7 +25,19 @@ const CLAUDE_PRICES: Record<string, [number, number]> = {
   "claude-opus-5-5": [4, 20],
   "claude-sonnet-5-5": [2, 10],
   "claude-haiku-5-5": [0.1, 0.5],
+  // Models the server-side fallback may answer with.
+  "claude-opus-5": [5, 25],
+  "claude-sonnet-5": [2, 10],
+  "claude-opus-4-8": [5, 25],
 };
+
+/** Claude price for the model that answered; an unknown ID is billed at the configured model's price, never 0. */
+function claudePrice(answered: string, configured: string): [number, number] {
+  return CLAUDE_PRICES[answered] ?? CLAUDE_PRICES[answered.replace(/-\d{8}$/, "")] ?? CLAUDE_PRICES[configured] ?? CLAUDE_PRICES["claude-opus-5-5"];
+}
+
+/** Only Claude usage has a known price, so the monthly limit can only count Claude. */
+export const SPEND_LIMIT_PROVIDERS: AiProvider[] = ["claude"];
 // Models that accept the server-side refusal fallback.
 const FALLBACK_MODELS = new Set(["claude-opus-5-5", "claude-sonnet-5-5"]);
 
@@ -60,6 +74,32 @@ async function callClaude(s: AppSettings, system: string, user: string, schema: 
   if (response.stop_reason === "max_tokens") throw new Error("La respuesta de la IA quedó incompleta. Intente de nuevo.");
   const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
   return { text, model: response.model, inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens };
+}
+
+async function callDeepSeek(s: AppSettings, system: string, user: string): Promise<Completion> {
+  const apiKey = await getSecret("deepseek");
+  if (!apiKey) throw new Error("Falta la clave de DeepSeek. Cárguela en Ajustes.");
+  // OpenAI-compatible API; goes through the Rust HTTP client (scoped in capabilities) to avoid CORS.
+  const res = await tauriFetch("https://api.deepseek.com/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: s.ai_model,
+      stream: false,
+      response_format: { type: "json_object" },
+      messages: [{ role: "system", content: system }, { role: "user", content: user }],
+    }),
+  });
+  if (!res.ok) throw new Error(`DeepSeek respondió ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content ?? "";
+  if (!text) throw new Error("DeepSeek no devolvió contenido.");
+  return {
+    text,
+    model: data.model ?? s.ai_model,
+    inputTokens: data.usage?.prompt_tokens ?? 0,
+    outputTokens: data.usage?.completion_tokens ?? 0,
+  };
 }
 
 async function callGemini(s: AppSettings, system: string, user: string): Promise<Completion> {
@@ -118,10 +158,12 @@ async function runJson<T>(task: AiTask, system: string, user: string, schema: Js
   const withSchema = `${user}\n\nResponda SOLO con JSON que cumpla este esquema:\n${JSON.stringify(schema)}`;
   const c =
     s.ai_provider === "claude" ? await callClaude(s, system, user, schema)
+    : s.ai_provider === "deepseek" ? await callDeepSeek(s, system, withSchema)
     : s.ai_provider === "gemini" ? await callGemini(s, system, withSchema)
     : await callOllama(s, system, withSchema, schema);
 
-  const [inPrice, outPrice] = CLAUDE_PRICES[c.model] ?? [0, 0];
+  // shortcut: DeepSeek/Gemini/Ollama are logged with tokens but cost 0 (no price table); Settings says the limit only counts Claude.
+  const [inPrice, outPrice] = s.ai_provider === "claude" ? claudePrice(c.model, s.ai_model) : [0, 0];
   const cost = (c.inputTokens * inPrice + c.outputTokens * outPrice) / 1_000_000;
   await (await getDb()).execute(
     "INSERT INTO ai_usage (provider, model, task, input_tokens, output_tokens, cost_usd) VALUES ($1, $2, $3, $4, $5, $6)",
@@ -196,21 +238,64 @@ function jobBlock(job: Job): string {
   ].join("\n");
 }
 
+// ---- Shape guards: providers without server-side schemas can omit keys ----
+
+const asStr = (v: unknown) => (typeof v === "string" ? v : "");
+const asArr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+const asRec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
+const strs = (v: unknown) => asArr(v).map(asStr).filter(Boolean);
+const pick = <K extends string>(v: unknown, keys: readonly K[]) =>
+  Object.fromEntries(keys.map((k) => [k, asStr(asRec(v)[k])])) as Record<K, string>;
+
+const PERSONAL_KEYS = [
+  "full_name", "email", "phone", "city", "country", "headline", "summary",
+  "target_role", "salary_expectation", "availability", "linkedin_url", "portfolio_url",
+] as const;
+
+function toProfile(raw: unknown): Profile {
+  const r = asRec(raw);
+  return {
+    personal: pick(r.personal, PERSONAL_KEYS),
+    experience: asArr(r.experience).map((e) => pick(e, ["company", "role", "start_date", "end_date", "description"] as const)),
+    education: asArr(r.education).map((e) => pick(e, ["institution", "degree", "start_date", "end_date"] as const)),
+    skills: strs(r.skills),
+    languages: asArr(r.languages).map((l) => pick(l, ["language", "level"] as const)),
+  };
+}
+
+/** Also used when reading a stored cv_json, so an old malformed result cannot crash the screen. */
+export function toTailoredCv(raw: unknown): TailoredCv {
+  const r = asRec(raw);
+  return {
+    headline: asStr(r.headline),
+    summary: asStr(r.summary),
+    experience: asArr(r.experience).map((e) => ({
+      ...pick(e, ["role", "company", "start_date", "end_date"] as const),
+      bullets: strs(asRec(e).bullets),
+    })),
+    education: asArr(r.education).map((e) => pick(e, ["degree", "institution", "start_date", "end_date"] as const)),
+    skills: strs(r.skills),
+    languages: asArr(r.languages).map((l) => pick(l, ["language", "level"] as const)),
+    keywords_added: strs(r.keywords_added),
+    suggestions: strs(r.suggestions),
+  };
+}
+
 // ---- Tasks ----
 
 /** Turns the raw text of an imported CV into the structured profile. Empty string for anything not in the CV. */
-export function parseCvToProfile(cvText: string): Promise<Profile> {
-  return runJson<Profile>(
+export async function parseCvToProfile(cvText: string): Promise<Profile> {
+  return toProfile(await runJson<unknown>(
     "parse_cv",
     "You extract structured data from a CV. Copy facts exactly as written; use an empty string for any field " +
       "the CV does not contain. Do not guess salary or availability. Keep the CV's original language.",
     `<cv>\n${cvText}\n</cv>`,
     PROFILE_SCHEMA,
-  );
+  ));
 }
 
-export function adaptCv(profile: Profile, cvText: string, job: Job): Promise<TailoredCv> {
-  return runJson<TailoredCv>(
+export async function adaptCv(profile: Profile, cvText: string, job: Job): Promise<TailoredCv> {
+  return toTailoredCv(await runJson<unknown>(
     "adapt_cv",
     "You are an expert recruiter who tailors CVs so they pass ATS keyword filters and read well to a human. " +
       NO_INVENTION +
@@ -220,7 +305,7 @@ export function adaptCv(profile: Profile, cvText: string, job: Job): Promise<Tai
       "using 'usted' when writing in Spanish.",
     `<candidate_profile>\n${JSON.stringify(profile)}\n</candidate_profile>\n<base_cv>\n${cvText}\n</base_cv>\n<job>\n${jobBlock(job)}\n</job>`,
     TAILORED_CV_SCHEMA,
-  );
+  ));
 }
 
 export async function coverLetter(profile: Profile, cv: TailoredCv, job: Job): Promise<string> {
@@ -231,6 +316,7 @@ export async function coverLetter(profile: Profile, cv: TailoredCv, job: Job): P
     `<candidate_profile>\n${JSON.stringify(profile.personal)}\n</candidate_profile>\n<tailored_cv>\n${JSON.stringify(cv)}\n</tailored_cv>\n<job>\n${jobBlock(job)}\n</job>`,
     obj({ letter: str }),
   );
+  if (typeof result?.letter !== "string" || !result.letter.trim()) throw new Error("La IA no devolvió la carta. Intente de nuevo.");
   return result.letter;
 }
 
