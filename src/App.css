@@ -35,3 +35,43 @@ h2 { margin: 0 0 4px; font-size: 20px; }
 .col h5 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; }
 .kc { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 8px; font-size: 13px; }
 .kc small { color: var(--muted); display: block; }
+
+/* Profile screen */
+.drop {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;
+  border: 2px dashed var(--line); border-radius: var(--radius); padding: 28px; color: var(--muted); margin-bottom: 12px;
+}
+.drop b { color: var(--text); }
+.drop.over, .drop:hover { border-color: var(--accent); background: var(--accent-soft); }
+.drop:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cv-text { margin-bottom: 12px; }
+.cv-text summary { cursor: pointer; color: var(--muted); }
+.cv-text pre {
+  white-space: pre-wrap; max-height: 280px; overflow: auto; font-size: 12px;
+  background: var(--side); border-radius: 8px; padding: 12px;
+}
+.status { margin: 8px 0; }
+.status.ok { color: #1f9d55; }
+.status.error { color: var(--bad); }
+.status.busy { color: var(--muted); }
+.block { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px 14px; margin: 0 0 14px; }
+.block legend { font-weight: 600; padding: 0 6px; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+.grid .wide, .block > label.wide { grid-column: 1 / -1; display: block; }
+label span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+input, textarea {
+  width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px;
+  background: var(--bg); color: var(--text); font: inherit;
+}
+input:focus, textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+textarea { resize: vertical; }
+button {
+  font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--text);
+  padding: 7px 12px; border-radius: 7px; cursor: pointer;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: .6; cursor: default; }
+button.link { border: 0; background: none; padding: 4px 0; color: var(--accent); }
+button.link.danger { color: var(--bad); }
+.row-card { border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 10px; }
+.savebar { position: sticky; bottom: 0; background: var(--bg); padding: 10px 0; border-top: 1px solid var(--line); }

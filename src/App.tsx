@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import Pipeline from "./screens/Pipeline";
+import ProfileScreen from "./screens/Profile";
 import "./App.css";
 
 type ScreenId = "search" | "cv" | "pipeline" | "profile" | "settings";
@@ -34,7 +35,7 @@ const SCREENS: { id: ScreenId; icon: string; label: string; render: () => ReactN
     id: "profile",
     icon: "👤",
     label: "Mi perfil y CV base",
-    render: () => <Placeholder title="Mi perfil y CV base" sub="Su CV se guarda solo en esta Mac." />,
+    render: () => <ProfileScreen />,
   },
   {
     id: "settings",
