@@ -1,7 +1,9 @@
 import mammoth from "mammoth";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { installReadableStreamAsyncIterator } from "../polyfills";
 
+installReadableStreamAsyncIterator();
 GlobalWorkerOptions.workerSrc = workerUrl;
 
 export const ACCEPTED_CV_TYPES = ".pdf,.docx";
