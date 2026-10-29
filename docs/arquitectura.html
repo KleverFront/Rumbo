@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rumbo — Arquitectura</title>
+<style>
+:root{--bg:#f6f6f8;--card:#fff;--line:#dcdce3;--text:#1d1d1f;--muted:#6e6e78;--a:#2f6fed;--a2:#e8f0ff;--b:#1f9d55;--b2:#e5f6ec;--c:#c77700;--c2:#fff3dc;--d:#8a4bd8;--d2:#f2eafd}
+@media (prefers-color-scheme: dark){:root{--bg:#121214;--card:#1c1c1f;--line:#34343a;--text:#f2f2f5;--muted:#9a9aa5;--a:#5b8cff;--a2:#22304d;--b:#3ccf7a;--b2:#1d3527;--c:#f0a43a;--c2:#3a2d17;--d:#b48cff;--d2:#2e2440}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;padding:32px 16px}
+.wrap{max-width:1040px;margin:0 auto}
+h1{margin:0 0 4px}h2{margin:36px 0 10px;font-size:20px}
+.sub{color:var(--muted);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+svg text{fill:var(--text);font:13px -apple-system,system-ui,sans-serif}
+svg .m{fill:var(--muted);font-size:11.5px}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;font-size:14px}
+th{background:var(--bg);font-size:12px;text-transform:uppercase;color:var(--muted);letter-spacing:.03em}
+td code{font-size:12.5px}
+.ok{color:var(--b);font-weight:600}.no{color:var(--c);font-weight:600}
+ol li,ul li{margin-bottom:6px}
+.warn{background:var(--c2);border-radius:10px;padding:12px 14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Rumbo — Arquitectura (macOS)</h1>
+<p class="sub">App de escritorio local. Los datos y las claves se quedan en la Mac del usuario; solo sale a internet para consultar portales de empleo y el proveedor de IA que el usuario eligió.</p>
+
+<h2>1. Diagrama</h2>
+<div class="card">
+<svg viewBox="0 0 980 560" width="100%" role="img" aria-label="Diagrama de arquitectura de Rumbo">
+  <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker></defs>
+  <!-- App boundary -->
+  <rect x="10" y="10" width="610" height="540" rx="14" fill="none" stroke="var(--line)" stroke-dasharray="6 5" stroke-width="1.5"/>
+  <text x="26" y="34" style="font-weight:600">Rumbo.app (Tauri 2)</text>
+  <!-- UI -->
+  <rect x="30" y="50" width="570" height="130" rx="10" fill="var(--a2)" stroke="var(--a)"/>
+  <text x="46" y="74" style="font-weight:600">Interfaz — WebView (React + TypeScript)</text>
+  <rect x="46" y="88" width="122" height="74" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="58" y="112">Buscar</text><text x="58" y="130" class="m">resultados + match</text>
+  <rect x="180" y="88" width="122" height="74" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="192" y="112">Adaptar CV</text><text x="192" y="130" class="m">diff + ATS + PDF</text>
+  <rect x="314" y="88" width="122" height="74" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="326" y="112">Postulaciones</text><text x="326" y="130" class="m">kanban</text>
+  <rect x="448" y="88" width="138" height="74" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="460" y="112">Perfil / Ajustes</text><text x="460" y="130" class="m">CV base, IA, fuentes</text>
+  <!-- IPC -->
+  <line x1="315" y1="180" x2="315" y2="222" stroke="var(--muted)" marker-end="url(#ar)"/>
+  <text x="325" y="205" class="m">invoke() — comandos IPC tipados</text>
+  <!-- Core -->
+  <rect x="30" y="226" width="570" height="304" rx="10" fill="var(--b2)" stroke="var(--b)"/>
+  <text x="46" y="250" style="font-weight:600">Núcleo — Rust (comandos Tauri)</text>
+  <rect x="46" y="264" width="170" height="80" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="58" y="288">Fuentes de empleo</text><text x="58" y="306" class="m">un adaptador por portal</text><text x="58" y="322" class="m">normaliza a «Oferta»</text>
+  <rect x="230" y="264" width="170" height="80" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="242" y="288">Motor IA</text><text x="242" y="306" class="m">interfaz única de LLM</text><text x="242" y="322" class="m">prompts + control de gasto</text>
+  <rect x="414" y="264" width="170" height="80" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="426" y="288">Matching / ATS</text><text x="426" y="306" class="m">palabras clave + score</text><text x="426" y="322" class="m">(local, sin IA)</text>
+  <rect x="46" y="360" width="170" height="80" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="58" y="384">CV</text><text x="58" y="402" class="m">leer PDF/DOCX → JSON</text><text x="58" y="418" class="m">plantilla → PDF</text>
+  <rect x="230" y="360" width="170" height="80" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="242" y="384">Programador</text><text x="242" y="402" class="m">búsqueda diaria</text><text x="242" y="418" class="m">+ notificaciones</text>
+  <rect x="414" y="360" width="170" height="80" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="426" y="384">Secretos</text><text x="426" y="402" class="m">claves API en el</text><text x="426" y="418" class="m">Llavero de macOS</text>
+  <rect x="46" y="456" width="538" height="58" rx="8" fill="var(--d2)" stroke="var(--d)"/>
+  <text x="58" y="480" style="font-weight:600">SQLite local</text><text x="58" y="498" class="m">~/Library/Application Support/com.rumbo.app/rumbo.db — perfil, CVs, ofertas, postulaciones, gasto IA</text>
+  <!-- External -->
+  <text x="660" y="34" style="font-weight:600">Servicios externos</text>
+  <rect x="660" y="50" width="300" height="200" rx="10" fill="var(--c2)" stroke="var(--c)"/>
+  <text x="676" y="74" style="font-weight:600">Portales de empleo</text>
+  <text x="676" y="98">Adzuna API · Jooble API</text><text x="676" y="118">Remotive API (remoto)</text>
+  <text x="676" y="138">Computrabajo · Multitrabajos</text><text x="676" y="156" class="m">sin API pública: por verificar</text>
+  <text x="676" y="178">Encuentra Empleo (MDT)</text>
+  <text x="676" y="200">Enlace pegado (LinkedIn, etc.)</text><text x="676" y="218" class="m">se lee 1 oferta, sin scraping masivo</text>
+  <rect x="660" y="270" width="300" height="150" rx="10" fill="var(--c2)" stroke="var(--c)"/>
+  <text x="676" y="294" style="font-weight:600">Proveedores de IA (clave del usuario)</text>
+  <text x="676" y="318">Claude — Sonnet 5.5 / Haiku 5.5</text><text x="676" y="338">Gemini · OpenAI</text>
+  <text x="676" y="358">Ollama (local, opcional)</text><text x="676" y="382" class="m">el usuario elige uno en Ajustes</text>
+  <rect x="660" y="440" width="300" height="90" rx="10" fill="var(--card)" stroke="var(--line)"/>
+  <text x="676" y="464" style="font-weight:600">GitHub</text><text x="676" y="486">Releases + updater firmado</text><text x="676" y="506" class="m">sin telemetría por defecto</text>
+  <line x1="216" y1="300" x2="656" y2="150" stroke="var(--muted)" marker-end="url(#ar)"/>
+  <line x1="400" y1="310" x2="656" y2="340" stroke="var(--muted)" marker-end="url(#ar)"/>
+  <line x1="600" y1="480" x2="656" y2="485" stroke="var(--muted)" marker-end="url(#ar)" stroke-dasharray="4 4"/>
+</svg>
+</div>
+
+<h2>2. Flujo principal</h2>
+<div class="card"><ol>
+<li><b>Perfil:</b> el usuario sube su CV (PDF/DOCX). Se extrae el texto y la IA lo estructura una sola vez como JSON (experiencia, habilidades, estudios).</li>
+<li><b>Buscar:</b> cada adaptador consulta su portal y devuelve ofertas en un formato común. Se eliminan duplicados por empresa + cargo + ciudad.</li>
+<li><b>Match / ATS:</b> se calcula localmente, sin IA y sin costo, cruzando las palabras clave de la oferta con el CV base.</li>
+<li><b>Adaptar:</b> solo cuando el usuario lo pide, la IA reescribe el CV para esa oferta con la regla «no inventar experiencia». También genera el skill gap y la carta de presentación.</li>
+<li><b>Exportar:</b> el CV en JSON se pasa por una plantilla y se genera el PDF.</li>
+<li><b>Seguimiento:</b> la oferta pasa al kanban, con recordatorios por notificación de macOS.</li>
+</ol></div>
+
+<h2>3. Herramientas necesarias</h2>
+<table>
+<tr><th>Herramienta</th><th>Para qué</th><th>En su Mac</th></tr>
+<tr><td>Xcode Command Line Tools</td><td>Compilar Rust/Tauri en macOS</td><td class="ok">Instalado</td></tr>
+<tr><td>Homebrew</td><td>Instalar lo demás</td><td class="ok">Instalado</td></tr>
+<tr><td>Node.js</td><td>Frontend (Vite)</td><td class="ok">v26 instalado</td></tr>
+<tr><td>pnpm</td><td>Gestor de paquetes JS</td><td class="no">Falta — <code>brew install pnpm</code></td></tr>
+<tr><td>Rust (rustup)</td><td>Núcleo de la app</td><td class="no">Falta — <code>brew install rustup && rustup-init</code></td></tr>
+<tr><td>Tauri CLI 2</td><td>Crear, correr y empaquetar la .app/.dmg</td><td class="no">Falta — se instala por proyecto (<code>pnpm add -D @tauri-apps/cli</code>)</td></tr>
+<tr><td>React + TypeScript + Vite</td><td>Interfaz (CSS propio, tomado del mockup)</td><td>Dependencias del proyecto</td></tr>
+<tr><td>Plugins Tauri: <code>sql</code>, <code>http</code>, <code>notification</code>, <code>updater</code></td><td>SQLite, red, avisos, actualizaciones</td><td>Dependencias del proyecto</td></tr>
+<tr><td>Crate <code>keyring</code></td><td>Guardar claves API en el Llavero</td><td>Dependencia del proyecto</td></tr>
+<tr><td><code>pdfjs-dist</code> / <code>mammoth</code></td><td>Leer CV en PDF / DOCX</td><td>Dependencias del proyecto</td></tr>
+<tr><td><code>@react-pdf/renderer</code></td><td>Generar el CV en PDF</td><td>Dependencia del proyecto</td></tr>
+<tr><td>Claves de API</td><td>Adzuna y Jooble (gratis con registro) + el proveedor de IA</td><td class="no">Por crear</td></tr>
+<tr><td>Apple Developer ($99/año)</td><td>Firmar y notarizar la app para distribuirla</td><td>Solo si se distribuye</td></tr>
+<tr><td>GitHub + Actions</td><td>Repositorio y builds automáticos</td><td>Al final</td></tr>
+</table>
+
+<h2>4. Por qué este stack</h2>
+<div class="card"><ul>
+<li><b>Tauri en vez de Electron o Python embebido:</b> genera una .app de unos 10 MB que usa el WebView de macOS. Xolva baja Python con pip en cada instalación; esto no.</li>
+<li><b>Sin Playwright ni scraping masivo:</b> se usan APIs públicas. LinkedIn queda solo como «pegar un enlace», así no se arriesga la cuenta del usuario.</li>
+<li><b>El match se calcula local y la IA solo corre a pedido:</b> así el costo queda bajo control y la app funciona aunque no haya clave cargada.</li>
+<li><b>Claves en el Llavero de macOS y sin telemetría</b> (Xolva manda eventos a su servidor).</li>
+</ul></div>
+
+<h2>5. Fases</h2>
+<div class="card"><ol>
+<li>Mockup aprobado (este documento + <code>mockup.html</code>).</li>
+<li>Esqueleto Tauri + SQLite + navegación.</li>
+<li>Perfil: importar CV → JSON.</li>
+<li>Fuentes: Remotive y Adzuna primero; luego el resto.</li>
+<li>Match/ATS local.</li>
+<li>Motor IA (un proveedor primero, luego más) + adaptar CV + exportar PDF.</li>
+<li>Kanban de postulaciones + recordatorios.</li>
+<li>Empaquetado .dmg + repo en GitHub.</li>
+</ol>
+<p class="warn">⚠️ Antes de la fase 4 hay que verificar si Computrabajo y Multitrabajos permiten consultar sus ofertas por API o feed, o revisar sus términos de uso. Si no lo permiten, se usa «pegar enlace».</p>
+</div>
+
+<h2>6. Alcance v1 y preparación para v2 (copiloto de postulación)</h2>
+<div class="card">
+<p><b>v1:</b> buscar ofertas → match/ATS → CV adaptado + carta → kanban. El formulario de postulación lo llena el usuario.</p>
+<p><b>v2 (no se construye ahora):</b> una extensión de Chrome/Safari que rellena los formularios con el perfil, adjunta el CV adaptado y propone respuestas a las preguntas abiertas. El usuario siempre aprieta «Enviar».</p>
+<p>Decisiones de v1 para que v2 se pueda agregar sin rehacer nada:</p>
+<ul>
+<li><b>Perfil estructurado:</b> el perfil se guarda como campos tipados (contacto, experiencia, estudios, idiomas, pretensión salarial, disponibilidad), no como texto libre. La extensión los usará para mapear los campos de cada formulario.</li>
+<li><b>CV adaptado guardado por oferta:</b> la tabla <code>applications</code> guarda el JSON y el PDF generado, listos para adjuntar.</li>
+<li><b>Banco de respuestas:</b> se crea desde v1 la tabla <code>answers</code> (pregunta, respuesta, oferta), aunque todavía no tenga pantalla.</li>
+<li><b>Núcleo separado de la UI:</b> los comandos Rust (perfil, CV, IA) no dependen de React. En v2, la extensión los llama por <i>native messaging</i> o un puerto local con token.</li>
+<li><b>Motor IA con tareas nombradas</b> (<code>adapt_cv</code>, <code>cover_letter</code>, <code>skill_gap</code>). En v2 se agrega <code>answer_question</code> sin tocar lo demás.</li>
+</ul>
+</div>
+</div>
+</body>
+</html>

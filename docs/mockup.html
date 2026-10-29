@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rumbo — Mockup</title>
+<style>
+:root{
+  --bg:#e9e9ee; --win:#ffffff; --side:#f4f4f7; --line:#e2e2e8; --text:#1d1d1f; --muted:#6e6e78;
+  --accent:#2f6fed; --accent-soft:#e8f0ff; --ok:#1f9d55; --ok-soft:#e5f6ec; --warn:#c77700; --warn-soft:#fff3dc;
+  --bad:#d64545; --bad-soft:#fdeaea; --radius:10px;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#121214;--win:#1c1c1f;--side:#232327;--line:#333339;--text:#f2f2f5;--muted:#9a9aa5;
+  --accent:#5b8cff;--accent-soft:#22304d;--ok:#3ccf7a;--ok-soft:#1d3527;--warn:#f0a43a;--warn-soft:#3a2d17;--bad:#f06a6a;--bad-soft:#3b2020}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;padding:24px 16px}
+.note{max-width:1180px;margin:0 auto 12px;color:var(--muted);font-size:13px}
+.window{max-width:1180px;margin:0 auto;background:var(--win);border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,.18);overflow:hidden;border:1px solid var(--line)}
+.titlebar{height:38px;display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--side)}
+.dot{width:12px;height:12px;border-radius:50%}.r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+.titlebar .t{flex:1;text-align:center;font-weight:600;color:var(--muted);font-size:13px;margin-right:52px}
+.app{display:grid;grid-template-columns:210px 1fr;min-height:640px}
+.side{background:var(--side);border-right:1px solid var(--line);padding:14px 10px}
+.side h6{margin:14px 10px 6px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.nav{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;cursor:pointer;color:var(--text)}
+.nav:hover{background:var(--line)}.nav.on{background:var(--accent);color:#fff}
+.nav .n{margin-left:auto;font-size:12px;opacity:.7}
+.usage{margin:18px 10px 0;padding:10px;border:1px solid var(--line);border-radius:8px;font-size:12px;color:var(--muted)}
+.bar{height:6px;background:var(--line);border-radius:3px;margin-top:6px}.bar i{display:block;height:100%;border-radius:3px;background:var(--accent)}
+main{padding:18px 22px;overflow:auto}
+.screen{display:none}.screen.on{display:block}
+h2{margin:0 0 4px;font-size:20px}.sub{color:var(--muted);margin:0 0 16px}
+.search{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;margin-bottom:10px}
+input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--win);color:var(--text);font:inherit}
+button{font:inherit;border:1px solid var(--line);background:var(--win);color:var(--text);padding:8px 14px;border-radius:8px;cursor:pointer}
+button.p{background:var(--accent);border-color:var(--accent);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.chip{font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.split{display:grid;grid-template-columns:1fr 1.15fr;gap:16px}
+.list{display:flex;flex-direction:column;gap:8px}
+.job{border:1px solid var(--line);border-radius:var(--radius);padding:12px;cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:4px}
+.job.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.job b{font-size:14px}.job .m{color:var(--muted);font-size:12px}
+.score{font-weight:700;font-size:13px;padding:3px 8px;border-radius:6px;align-self:start}
+.s-hi{background:var(--ok-soft);color:var(--ok)}.s-md{background:var(--warn-soft);color:var(--warn)}.s-lo{background:var(--bad-soft);color:var(--bad)}
+.card{border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.card h3{margin:0 0 2px}.meta{color:var(--muted);font-size:13px;margin-bottom:12px}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.kpi{background:var(--side);border-radius:8px;padding:10px}.kpi small{color:var(--muted);display:block}.kpi b{font-size:18px}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px}
+.tag{font-size:12px;padding:3px 8px;border-radius:6px}
+.t-ok{background:var(--ok-soft);color:var(--ok)}.t-miss{background:var(--bad-soft);color:var(--bad)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.lbl{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-top:10px}
+.cvgrid{display:grid;grid-template-columns:1fr 1fr 280px;gap:14px}
+.doc{border:1px solid var(--line);border-radius:var(--radius);padding:14px;font-size:13px;min-height:420px}
+.doc h4{margin:0 0 8px}
+.add{background:var(--ok-soft);border-radius:3px;padding:0 2px}.del{background:var(--bad-soft);text-decoration:line-through;border-radius:3px;padding:0 2px}
+.kanban{display:grid;grid-template-columns:repeat(5,minmax(160px,1fr));gap:10px;overflow-x:auto}
+.col{background:var(--side);border-radius:var(--radius);padding:10px;min-height:420px}
+.col h5{margin:0 0 8px;font-size:12px;color:var(--muted);text-transform:uppercase}
+.kc{background:var(--win);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:8px;font-size:13px}
+.kc small{color:var(--muted);display:block}
+.form{display:grid;grid-template-columns:200px 1fr;gap:12px 16px;max-width:720px;align-items:center}
+.form label{color:var(--muted)}
+.hint{grid-column:2;font-size:12px;color:var(--muted);margin-top:-6px}
+.drop{border:2px dashed var(--line);border-radius:var(--radius);padding:28px;text-align:center;color:var(--muted);margin-bottom:14px}
+@media (max-width:820px){.app{grid-template-columns:1fr}.side{display:none}.split,.cvgrid{grid-template-columns:1fr}.search{grid-template-columns:1fr}.form{grid-template-columns:1fr}.hint{grid-column:1}}
+</style>
+</head>
+<body>
+<p class="note">Mockup navegable (datos de ejemplo). Use la barra lateral para cambiar de pantalla. Nombre de trabajo: <b>Rumbo</b>.</p>
+<div class="window">
+  <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="t">Rumbo</span></div>
+  <div class="app">
+    <aside class="side">
+      <div class="nav on" data-s="buscar">🔎 Buscar ofertas</div>
+      <div class="nav" data-s="cv">📄 Adaptar CV</div>
+      <div class="nav" data-s="pipe">📋 Postulaciones <span class="n">12</span></div>
+      <div class="nav" data-s="perfil">👤 Mi perfil y CV base</div>
+      <h6>Configuración</h6>
+      <div class="nav" data-s="ajustes">⚙️ Ajustes</div>
+      <div class="usage">IA: Claude Sonnet 5.5<br>Gasto del mes: $1,84
+        <div class="bar"><i style="width:18%"></i></div><span style="font-size:11px">Límite propio: $10</span></div>
+    </aside>
+    <main>
+      <!-- BUSCAR -->
+      <section class="screen on" id="buscar">
+        <h2>Buscar ofertas</h2>
+        <p class="sub">Un solo buscador para varios portales. Cada oferta se compara con su CV base.</p>
+        <div class="search">
+          <input value="Desarrollador Python / Odoo">
+          <input value="Loja, Ecuador">
+          <select><option>Presencial y remoto</option><option>Solo remoto</option></select>
+          <button class="p">Buscar</button>
+        </div>
+        <div class="chips">
+          <span class="chip on">Computrabajo</span><span class="chip on">Multitrabajos</span><span class="chip on">Encuentra Empleo</span>
+          <span class="chip on">Adzuna</span><span class="chip on">Remotive</span><span class="chip">Jooble</span><span class="chip">+ Pegar enlace (LinkedIn, etc.)</span>
+        </div>
+        <div class="split">
+          <div class="list">
+            <div class="job on"><div><b>Desarrollador Odoo Senior</b><div class="m">Farmacias XYZ · Loja · Computrabajo · hace 2 días</div></div><span class="score s-hi">87%</span></div>
+            <div class="job"><div><b>Backend Python (remoto)</b><div class="m">Acme LATAM · Remoto · Remotive · hace 1 día</div></div><span class="score s-hi">81%</span></div>
+            <div class="job"><div><b>Analista de Sistemas ERP</b><div class="m">Banco del Sur · Quito · Multitrabajos · hace 4 días</div></div><span class="score s-md">64%</span></div>
+            <div class="job"><div><b>Full-stack React + Node</b><div class="m">StartUp EC · Guayaquil · Adzuna · hace 6 días</div></div><span class="score s-md">55%</span></div>
+            <div class="job"><div><b>Data Engineer</b><div class="m">Retail Co · Remoto · Jooble · hace 1 semana</div></div><span class="score s-lo">38%</span></div>
+          </div>
+          <div class="card">
+            <h3>Desarrollador Odoo Senior</h3>
+            <div class="meta">Farmacias XYZ · Loja · $1.800–2.200 · Tiempo completo</div>
+            <div class="kpis">
+              <div class="kpi"><small>Compatibilidad</small><b style="color:var(--ok)">87%</b></div>
+              <div class="kpi"><small>Puntaje ATS</small><b>74 / 100</b></div>
+              <div class="kpi"><small>Seniority</small><b>Coincide</b></div>
+            </div>
+            <div class="lbl">Usted ya cumple</div>
+            <div class="tags"><span class="tag t-ok">Python</span><span class="tag t-ok">Odoo 16/17</span><span class="tag t-ok">PostgreSQL</span><span class="tag t-ok">OWL</span><span class="tag t-ok">Docker</span></div>
+            <div class="lbl">Le falta mostrar</div>
+            <div class="tags"><span class="tag t-miss">Facturación electrónica SRI</span><span class="tag t-miss">Liderazgo de equipo</span></div>
+            <div class="lbl">Resumen de la oferta</div>
+            <p style="margin:4px 0 0">Buscan perfil con 5+ años en Odoo, módulos contables y POS, integración con SRI…</p>
+            <div class="actions">
+              <button class="p" onclick="go('cv')">✨ Adaptar CV</button><button>✉️ Carta de presentación</button><button>⭐ Guardar</button><button>↗ Abrir oferta</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CV -->
+      <section class="screen" id="cv">
+        <h2>Adaptar CV</h2>
+        <p class="sub">Para: <b>Desarrollador Odoo Senior — Farmacias XYZ</b>. La IA solo reorganiza y resalta lo que ya está en su CV; no inventa experiencia.</p>
+        <div class="cvgrid">
+          <div class="doc"><h4>CV base</h4>
+            <p><b>Resumen:</b> Desarrollador con experiencia en Python y web.</p>
+            <p><b>Experiencia:</b><br>• Desarrollo de módulos Odoo.<br>• Mantenimiento de servidores.</p>
+          </div>
+          <div class="doc"><h4>CV adaptado</h4>
+            <p><b>Resumen:</b> <span class="del">Desarrollador con experiencia en Python y web.</span> <span class="add">Desarrollador Odoo con 6 años en módulos contables, POS e integración con el SRI.</span></p>
+            <p><b>Experiencia:</b><br>• <span class="add">Desarrollo de módulos Odoo 17 para facturación electrónica SRI y POS offline.</span><br>• Mantenimiento de servidores <span class="add">PostgreSQL y Docker en AWS</span>.</p>
+          </div>
+          <div class="card">
+            <div class="kpis" style="grid-template-columns:1fr 1fr"><div class="kpi"><small>ATS antes</small><b>61</b></div><div class="kpi"><small>ATS después</small><b style="color:var(--ok)">84</b></div></div>
+            <div class="lbl">Palabras clave agregadas</div>
+            <div class="tags"><span class="tag t-ok">SRI</span><span class="tag t-ok">POS</span><span class="tag t-ok">Odoo 17</span></div>
+            <div class="lbl">Sugerencias</div>
+            <p style="font-size:13px;margin:4px 0">Si lideró equipos, agréguelo: la oferta lo pide y su CV no lo menciona.</p>
+            <div class="lbl">Plantilla</div>
+            <select><option>Clásica (compatible ATS)</option><option>Moderna</option></select>
+            <div class="actions"><button class="p">⬇ Exportar PDF</button><button>✏️ Editar</button><button>↻ Regenerar</button></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PIPELINE -->
+      <section class="screen" id="pipe">
+        <h2>Postulaciones</h2>
+        <p class="sub">Arrastre las tarjetas para cambiar de estado. Recordatorio automático si no hay respuesta en 7 días.</p>
+        <div class="kanban">
+          <div class="col"><h5>Guardadas · 4</h5><div class="kc"><b>Data Engineer</b><small>Retail Co · 38%</small></div><div class="kc"><b>Full-stack React</b><small>StartUp EC · 55%</small></div></div>
+          <div class="col"><h5>Postuladas · 5</h5><div class="kc"><b>Desarrollador Odoo Sr.</b><small>Farmacias XYZ · hace 2 días</small></div><div class="kc"><b>Analista ERP</b><small>Banco del Sur · ⏰ seguimiento hoy</small></div></div>
+          <div class="col"><h5>Entrevista · 2</h5><div class="kc"><b>Backend Python</b><small>Acme LATAM · jue 10:00</small><small>🎯 Preparar entrevista</small></div></div>
+          <div class="col"><h5>Oferta · 1</h5><div class="kc"><b>Consultor Odoo</b><small>Partner EC · $2.000</small></div></div>
+          <div class="col"><h5>Descartadas · 0</h5></div>
+        </div>
+      </section>
+
+      <!-- PERFIL -->
+      <section class="screen" id="perfil">
+        <h2>Mi perfil y CV base</h2>
+        <p class="sub">Su CV se guarda solo en esta Mac.</p>
+        <div class="drop">Arrastre aquí su CV en PDF o DOCX<br><small>o <u>créelo desde cero</u></small></div>
+        <div class="form">
+          <label>Nombre</label><input value="Nombre Apellido">
+          <label>Cargo objetivo</label><input value="Desarrollador Odoo / Python">
+          <label>Habilidades</label><input value="Python, Odoo, PostgreSQL, OWL, Docker">
+          <label>Idiomas del CV</label><select><option>Español</option><option>Español + Inglés</option></select>
+        </div>
+      </section>
+
+      <!-- AJUSTES -->
+      <section class="screen" id="ajustes">
+        <h2>Ajustes</h2>
+        <p class="sub">Usted elige el proveedor de IA y usa su propia clave.</p>
+        <div class="form">
+          <label>Proveedor de IA</label><select><option>Claude (Anthropic)</option><option>Gemini (Google)</option><option>OpenAI</option><option>Ollama (local, sin internet)</option></select>
+          <label>Modelo</label><select><option>Sonnet 5.5 — mejor calidad</option><option>Haiku 5.5 — más barato</option></select>
+          <label>Clave API</label><input type="password" value="sk-ant-xxxxxxxx">
+          <span class="hint">🔒 Se guarda en el Llavero de macOS, nunca en un archivo.</span>
+          <label>Límite de gasto mensual</label><input value="$10">
+          <label>Portales activos</label><div class="chips" style="margin:0"><span class="chip on">Computrabajo</span><span class="chip on">Multitrabajos</span><span class="chip on">Adzuna</span><span class="chip on">Remotive</span><span class="chip">Jooble</span></div>
+          <label>Búsqueda automática</label><select><option>Cada mañana a las 8:00 + notificación</option><option>Desactivada</option></select>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+<script>
+function go(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id===id));
+  document.querySelectorAll('.nav').forEach(n=>n.classList.toggle('on',n.dataset.s===id));
+}
+document.querySelectorAll('.nav').forEach(n=>n.onclick=()=>go(n.dataset.s));
+document.querySelectorAll('.job').forEach(j=>j.onclick=()=>{document.querySelectorAll('.job').forEach(x=>x.classList.remove('on'));j.classList.add('on')});
+document.querySelectorAll('.chips .chip').forEach(c=>c.onclick=()=>c.classList.toggle('on'));
+</script>
+</body>
+</html>
