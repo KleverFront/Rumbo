@@ -137,7 +137,7 @@ export async function postponeFollowUp(id: number): Promise<void> {
   );
 }
 
-export async function saveTailoredCv(jobId: number, fields: { cv_json?: string; cv_pdf_path?: string; cover_letter?: string; ats_score?: number }): Promise<void> {
+export async function saveTailoredCv(jobId: number, fields: { cv_json?: string; cv_pdf_path?: string; cover_letter?: string; ats_score?: number; cv_design?: string }): Promise<void> {
   const d = await getDb();
   await saveToPipeline(jobId, null);
   for (const [col, value] of Object.entries(fields)) {
@@ -147,9 +147,16 @@ export async function saveTailoredCv(jobId: number, fields: { cv_json?: string; 
   }
 }
 
-export async function getApplicationByJob(jobId: number): Promise<{ cv_json: string | null; cover_letter: string | null; cv_pdf_path: string | null } | null> {
-  const [row] = await (await getDb()).select<{ cv_json: string | null; cover_letter: string | null; cv_pdf_path: string | null }[]>(
-    "SELECT cv_json, cover_letter, cv_pdf_path FROM applications WHERE job_id = $1",
+export interface ApplicationDocs {
+  cv_json: string | null;
+  cover_letter: string | null;
+  cv_pdf_path: string | null;
+  cv_design: string | null;
+}
+
+export async function getApplicationByJob(jobId: number): Promise<ApplicationDocs | null> {
+  const [row] = await (await getDb()).select<ApplicationDocs[]>(
+    "SELECT cv_json, cover_letter, cv_pdf_path, cv_design FROM applications WHERE job_id = $1",
     [jobId],
   );
   return row ?? null;

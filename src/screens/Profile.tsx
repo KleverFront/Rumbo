@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { parseCvToProfile } from "../ai";
 import { ACCEPTED_CV_TYPES, extractCvText } from "../cv/extract";
+import { ACCEPTED_PHOTO_TYPES, photoToDataUrl } from "../cv/photo";
 import {
-  PROFILE_FIELDS, loadBaseCv, loadProfile, saveBaseCv, saveProfile, uniqueCaseInsensitive,
+  PROFILE_FIELDS, loadBaseCv, loadPhoto, loadProfile, saveBaseCv, savePhoto, saveProfile, uniqueCaseInsensitive,
   type BaseCv, type Education, type Experience, type Language, type Profile, type ProfileField,
 } from "../profile";
 
@@ -76,6 +77,7 @@ export default function ProfileScreen() {
   const [cv, setCv] = useState<BaseCv | null>(null);
   const [status, setStatus] = useState<{ kind: "ok" | "error" | "busy"; text: string } | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [photo, setPhoto] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "pending" | "saving" | "saved" | "error">("idle");
 
   // Autosave: every change is written shortly after the user stops typing, and on leaving the tab.
@@ -101,6 +103,7 @@ export default function ProfileScreen() {
   }
 
   useEffect(() => {
+    loadPhoto().then(setPhoto).catch(() => {}); // the photo is optional; the rest of the profile still loads
     Promise.all([loadProfile(), loadBaseCv()])
       .then(([p, c]) => {
         latest.current = { profile: p, skillsText: p.skills.join(", ") };
@@ -164,6 +167,17 @@ export default function ProfileScreen() {
     }
   }
 
+  async function changePhoto(file: File | undefined | null) {
+    try {
+      const dataUrl = file ? await photoToDataUrl(file) : null;
+      await savePhoto(dataUrl);
+      setPhoto(dataUrl);
+      setStatus({ kind: "ok", text: dataUrl ? "Foto guardada." : "Foto eliminada." });
+    } catch (e) {
+      setStatus({ kind: "error", text: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
   function onDrop(e: DragEvent) {
     e.preventDefault();
     setDragging(false);
@@ -204,7 +218,25 @@ export default function ProfileScreen() {
 
       {status && <p className={`status ${status.kind}`} role="status">{status.text}</p>}
 
-      {profile && (
+      {profile && (<>
+        <fieldset className="block photo-block">
+          <legend>Foto para el CV</legend>
+          <div className="photo-row">
+            {photo ? <img className="photo-thumb" src={photo} alt="Su foto" /> : <span className="photo-thumb empty-photo" aria-hidden="true" />}
+            <div>
+              <p className="hint">Opcional. Se recorta cuadrada y se usa solo en los diseños que muestran foto. Use una foto formal, de frente y con fondo claro.</p>
+              <div className="actions">
+                <label className="button-like">
+                  {photo ? "Cambiar foto" : "Subir foto"}
+                  <input type="file" accept={ACCEPTED_PHOTO_TYPES} hidden
+                    onChange={(e) => { changePhoto(e.target.files?.[0]); e.target.value = ""; }} />
+                </label>
+                {photo && <button type="button" className="link danger" onClick={() => changePhoto(null)}>Quitar foto</button>}
+              </div>
+            </div>
+          </div>
+        </fieldset>
+
         <form onSubmit={(e) => { e.preventDefault(); flush(); }}>
           <fieldset className="block">
             <legend>Datos personales</legend>
@@ -245,7 +277,7 @@ export default function ProfileScreen() {
                saved: "Todos los cambios están guardados.", error: "No se pudieron guardar los cambios." }[saveState]}
           </div>
         </form>
-      )}
+      </>)}
     </section>
   );
 }

@@ -1,9 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import { CV_MODES, adaptCv, coverLetter, reviseCv, tailoredCvText, toTailoredCv, type CvMode, type TailoredCv } from "../ai";
+import { DEFAULT_DESIGN, toDesign, type CvDesign } from "../cv/design";
 import { exportCvPdf, safeFileName } from "../cv/pdf";
+import { photoToDataUrl } from "../cv/photo";
 import { getApplicationByJob, getJob, listPipelineJobs, saveTailoredCv, type Job } from "../db";
 import { atsScore } from "../match";
-import { loadBaseCv, loadProfile, type BaseCv, type Profile } from "../profile";
+import { loadBaseCv, loadPhoto, loadProfile, savePhoto, type BaseCv, type Profile } from "../profile";
+import { loadSettings, saveSettings } from "../settings";
+import DesignTab from "./DesignTab";
+
+type Tab = "content" | "design" | "letter";
+
+const parseDesign = (json: string | null | undefined): CvDesign | null => {
+  if (!json) return null;
+  try {
+    return toDesign(JSON.parse(json));
+  } catch {
+    return null;
+  }
+};
 
 export default function AdaptCv({ jobId, onPickJob }: { jobId: number | null; onPickJob: (id: number) => void }) {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -16,13 +31,25 @@ export default function AdaptCv({ jobId, onPickJob }: { jobId: number | null; on
   const [mode, setMode] = useState<CvMode>("balanced");
   const [instruction, setInstruction] = useState("");
   const [status, setStatus] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const [tab, setTab] = useState<Tab>("content");
+  const [design, setDesign] = useState<CvDesign>(DEFAULT_DESIGN);
+  const [defaultDesign, setDefaultDesign] = useState<CvDesign>(DEFAULT_DESIGN);
+  const [photo, setPhoto] = useState<string | null>(null);
   // Results that arrive after the user picked another offer are dropped.
   const currentJob = useRef(jobId);
   currentJob.current = jobId;
 
   useEffect(() => {
-    Promise.all([listPipelineJobs(), loadProfile(), loadBaseCv()])
-      .then(([j, p, c]) => { setJobs(j); setProfile(p); setBaseCv(c); })
+    Promise.all([listPipelineJobs(), loadProfile(), loadBaseCv(), loadPhoto(), loadSettings()])
+      .then(([j, p, c, ph, s]) => {
+        setJobs(j);
+        setProfile(p);
+        setBaseCv(c);
+        setPhoto(ph);
+        const d = parseDesign(s.cv_design_default) ?? DEFAULT_DESIGN;
+        setDefaultDesign(d);
+        setDesign((current) => (current === DEFAULT_DESIGN ? d : current));
+      })
       .catch((e) => setStatus({ kind: "error", text: String(e) }));
   }, []);
 
@@ -37,6 +64,7 @@ export default function AdaptCv({ jobId, onPickJob }: { jobId: number | null; on
         setJob(j);
         if (a?.cv_json) setCv(toTailoredCv(JSON.parse(a.cv_json)));
         setLetter(a?.cover_letter ?? "");
+        setDesign(parseDesign(a?.cv_design) ?? defaultDesign);
       })
       .catch((e) => setStatus({ kind: "error", text: `No se pudo cargar la oferta: ${e}` }));
   }, [jobId]);
@@ -101,10 +129,26 @@ export default function AdaptCv({ jobId, onPickJob }: { jobId: number | null; on
     await run("Guardando…", () => saveTailoredCv(job.id, { cover_letter: result }));
   }
 
+  /** Remembers the design for this offer and makes it the starting point for the next ones. */
+  function changeDesign(next: CvDesign) {
+    setDesign(next);
+    setDefaultDesign(next);
+    const json = JSON.stringify(next);
+    if (job) saveTailoredCv(job.id, { cv_design: json }).catch((e) => setStatus({ kind: "error", text: `No se pudo guardar el diseño: ${e}` }));
+    saveSettings({ cv_design_default: json }).catch(() => {}); // only a default; the offer's own copy is what matters
+  }
+
+  async function uploadPhoto(file: File) {
+    const dataUrl = await run("Preparando la foto…", () => photoToDataUrl(file));
+    if (!dataUrl) return;
+    await run("Guardando la foto…", () => savePhoto(dataUrl));
+    setPhoto(dataUrl);
+  }
+
   async function exportPdf() {
     if (!job || !profile || !cv) return;
     const path = await run("Generando PDF…", () =>
-      exportCvPdf(cv, profile.personal, safeFileName("CV", profile.personal.full_name, job.company, job.title)),
+      exportCvPdf(cv, profile.personal, design, photo, safeFileName("CV", profile.personal.full_name, job.company, job.title)),
     );
     if (!path) return;
     await run("Guardando…", () => saveTailoredCv(job.id, { cv_pdf_path: path }));
@@ -138,6 +182,21 @@ export default function AdaptCv({ jobId, onPickJob }: { jobId: number | null; on
       )}
 
       {job && cv && (
+        <div className="tabs" role="tablist">
+          {([["content", "Contenido"], ["design", "Diseño"], ["letter", "Carta de presentación"]] as const).map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={tab === id} className={`tab${tab === id ? " on" : ""}`} onClick={() => setTab(id)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {job && cv && tab === "design" && profile && (
+        <DesignTab cv={cv} personal={profile.personal} design={design} onChange={changeDesign}
+          photo={photo} onUploadPhoto={uploadPhoto} onExport={exportPdf} busy={!!busy} />
+      )}
+
+      {job && cv && tab === "content" && (
         <div className="cvgrid">
           <div className="doc">
             <h4>CV base</h4>
@@ -172,7 +231,7 @@ export default function AdaptCv({ jobId, onPickJob }: { jobId: number | null; on
             </>)}
             <div className="actions">
               <button type="button" className="primary" disabled={!!busy} onClick={exportPdf}>Exportar PDF</button>
-              <button type="button" disabled={!!busy} onClick={makeLetter}>Carta de presentación</button>
+              <button type="button" disabled={!!busy} onClick={() => setTab("design")}>Elegir diseño</button>
             </div>
             <div className="lbl">Pedir cambios</div>
             <textarea rows={3} placeholder="Ej.: resalte más mi experiencia con Odoo y acorte el resumen"
@@ -189,13 +248,20 @@ export default function AdaptCv({ jobId, onPickJob }: { jobId: number | null; on
         </div>
       )}
 
-      {letter && (
+      {job && cv && tab === "letter" && (
         <fieldset className="block letter">
           <legend>Carta de presentación</legend>
-          <textarea rows={12} value={letter} onChange={(e) => setLetter(e.target.value)}
-            onBlur={() => job && saveTailoredCv(job.id, { cover_letter: letter })} />
+          {letter ? (
+            <textarea rows={14} value={letter} onChange={(e) => setLetter(e.target.value)}
+              onBlur={() => job && saveTailoredCv(job.id, { cover_letter: letter })} />
+          ) : (
+            <p className="sub">Genere una carta breve basada en su CV adaptado y en esta oferta.</p>
+          )}
           <div className="actions">
-            <button type="button" onClick={() => navigator.clipboard.writeText(letter)}>Copiar</button>
+            <button type="button" className={letter ? "" : "primary"} disabled={!!busy} onClick={makeLetter}>
+              {letter ? "Escribir de nuevo" : "Escribir carta"}
+            </button>
+            {letter && <button type="button" onClick={() => navigator.clipboard.writeText(letter)}>Copiar</button>}
           </div>
         </fieldset>
       )}

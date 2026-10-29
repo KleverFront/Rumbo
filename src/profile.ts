@@ -109,3 +109,13 @@ export async function saveBaseCv(fileName: string, rawText: string): Promise<voi
   await d.execute("UPDATE cvs SET is_base = 0 WHERE is_base = 1");
   await d.execute("INSERT INTO cvs (name, source_file, raw_text, is_base) VALUES ($1, $2, $3, 1)", [fileName, fileName, rawText]);
 }
+
+/** Profile photo for the CV as a small JPEG data URL, or null. Kept apart from Profile so autosave never rewrites it. */
+export async function loadPhoto(): Promise<string | null> {
+  const [row] = await (await getDb()).select<{ photo: string | null }[]>("SELECT photo FROM profile WHERE id = 1");
+  return row?.photo ?? null;
+}
+
+export async function savePhoto(dataUrl: string | null): Promise<void> {
+  await (await getDb()).execute("UPDATE profile SET photo = $1 WHERE id = 1", [dataUrl]);
+}

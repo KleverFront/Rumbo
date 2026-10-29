@@ -13,6 +13,7 @@ export interface AppSettings {
   adzuna_country: string;
   sources: string; // comma-separated enabled source ids
   last_reminder_date: string;
+  cv_design_default: string; // JSON CvDesign of the last design used; new offers start from it
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -23,6 +24,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   adzuna_country: "us",
   sources: "remotive,adzuna,linkedin",
   last_reminder_date: "",
+  cv_design_default: "",
 };
 
 export async function loadSettings(): Promise<AppSettings> {
