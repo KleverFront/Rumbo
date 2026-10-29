@@ -5,7 +5,7 @@ import type { Profile } from "./profile";
 import { getSecret, loadSettings, type AiProvider, type AppSettings } from "./settings";
 
 // Task names are logged in ai_usage; v2 adds "answer_question" here without touching the rest.
-export type AiTask = "parse_cv" | "adapt_cv" | "cover_letter";
+export type AiTask = "parse_cv" | "adapt_cv" | "revise_cv" | "cover_letter" | "search_strategy";
 
 export const DEFAULT_MODELS: Record<AiProvider, string> = {
   claude: "claude-opus-5-5",
@@ -148,6 +148,21 @@ async function callOllama(s: AppSettings, system: string, user: string, schema: 
 }
 
 /** Runs one AI task with the configured provider, enforces the monthly limit and logs the usage. */
+// Saturation, rate limits and dropped connections are worth retrying; a 4xx or bad key is not.
+const RETRYABLE = /respondió (408|429|5\d\d)|No se pudo conectar|Load failed|Failed to fetch|network/i;
+
+/** Retries a non-Claude provider call (the Claude SDK already retries on its own). */
+async function withRetries(call: () => Promise<Completion>, attempts = 3): Promise<Completion> {
+  for (let i = 1; ; i++) {
+    try {
+      return await call();
+    } catch (e) {
+      if (i >= attempts || !RETRYABLE.test(String(e instanceof Error ? e.message : e))) throw e;
+      await new Promise((r) => setTimeout(r, 1500 * i));
+    }
+  }
+}
+
 async function runJson<T>(task: AiTask, system: string, user: string, schema: JsonSchema): Promise<T> {
   const s = await loadSettings();
   const limit = Number(s.ai_monthly_limit_usd);
@@ -158,9 +173,9 @@ async function runJson<T>(task: AiTask, system: string, user: string, schema: Js
   const withSchema = `${user}\n\nResponda SOLO con JSON que cumpla este esquema:\n${JSON.stringify(schema)}`;
   const c =
     s.ai_provider === "claude" ? await callClaude(s, system, user, schema)
-    : s.ai_provider === "deepseek" ? await callDeepSeek(s, system, withSchema)
-    : s.ai_provider === "gemini" ? await callGemini(s, system, withSchema)
-    : await callOllama(s, system, withSchema, schema);
+    : s.ai_provider === "deepseek" ? await withRetries(() => callDeepSeek(s, system, withSchema))
+    : s.ai_provider === "gemini" ? await withRetries(() => callGemini(s, system, withSchema))
+    : await withRetries(() => callOllama(s, system, withSchema, schema));
 
   // shortcut: DeepSeek/Gemini/Ollama are logged with tokens but cost 0 (no price table); Settings says the limit only counts Claude.
   const [inPrice, outPrice] = s.ai_provider === "claude" ? claudePrice(c.model, s.ai_model) : [0, 0];
@@ -294,18 +309,72 @@ export async function parseCvToProfile(cvText: string): Promise<Profile> {
   ));
 }
 
-export async function adaptCv(profile: Profile, cvText: string, job: Job): Promise<TailoredCv> {
+export type CvMode = "light" | "balanced" | "deep";
+
+export const CV_MODES: { id: CvMode; label: string; hint: string }[] = [
+  { id: "light", label: "Suave", hint: "Pule y traduce. No cambia empresas, fechas ni nombres de cargo." },
+  { id: "balanced", label: "Equilibrado", hint: "Reescribe los logros con las palabras clave de la oferta. Recomendado." },
+  { id: "deep", label: "Profundo", hint: "Puede ajustar el nombre de sus cargos al de la oferta. Revise cada línea." },
+];
+
+const MODE_RULES: Record<CvMode, string> = {
+  light:
+    "Mode LIGHT: keep the candidate's structure and wording; only fix grammar, translate to the job's language and " +
+    "tighten phrasing. Job titles, employers and dates stay exactly as given.",
+  balanced:
+    "Mode BALANCED: rewrite the summary and bullets so they use the job posting's keywords where the candidate's data " +
+    "supports them, and reorder skills by relevance to the job. Job titles, employers and dates stay as given.",
+  deep:
+    "Mode DEEP: restructure freely for this job; you may rename a job title to the closest equivalent used in the posting " +
+    "only when the candidate's real duties match it. Employers and dates stay as given. Flag every renamed title in `suggestions`.",
+};
+
+const ADAPT_SYSTEM =
+  "You are an expert recruiter who tailors CVs so they pass ATS keyword filters and read well to a human. " +
+  NO_INVENTION +
+  " Write the CV in the language of the job posting. Bullets: start with a verb, include concrete results when the " +
+  "candidate's data has them, at most 5 per role. `keywords_added` lists job keywords the tailored CV now states " +
+  "explicitly (only ones backed by the candidate's data). `suggestions` are short tips addressed to the candidate " +
+  "using 'usted' when writing in Spanish.";
+
+export async function adaptCv(profile: Profile, cvText: string, job: Job, mode: CvMode = "balanced"): Promise<TailoredCv> {
   return toTailoredCv(await runJson<unknown>(
     "adapt_cv",
-    "You are an expert recruiter who tailors CVs so they pass ATS keyword filters and read well to a human. " +
-      NO_INVENTION +
-      " Write the CV in the language of the job posting. Bullets: start with a verb, include concrete results when the " +
-      "candidate's data has them, at most 5 per role. `keywords_added` lists job keywords the tailored CV now states " +
-      "explicitly (only ones backed by the candidate's data). `suggestions` are short tips addressed to the candidate " +
-      "using 'usted' when writing in Spanish.",
+    `${ADAPT_SYSTEM} ${MODE_RULES[mode]}`,
     `<candidate_profile>\n${JSON.stringify(profile)}\n</candidate_profile>\n<base_cv>\n${cvText}\n</base_cv>\n<job>\n${jobBlock(job)}\n</job>`,
     TAILORED_CV_SCHEMA,
   ));
+}
+
+/** Applies one free-text instruction from the user to an already tailored CV. */
+export async function reviseCv(profile: Profile, cv: TailoredCv, job: Job, instruction: string): Promise<TailoredCv> {
+  return toTailoredCv(await runJson<unknown>(
+    "revise_cv",
+    `${ADAPT_SYSTEM} You receive a tailored CV and one change request from the candidate. Apply only that change and ` +
+      "keep everything else as it is. If the request would require inventing facts, do not apply that part and say why in `suggestions`.",
+    `<candidate_profile>\n${JSON.stringify(profile)}\n</candidate_profile>\n<tailored_cv>\n${JSON.stringify(cv)}\n</tailored_cv>\n` +
+      `<job>\n${jobBlock(job)}\n</job>\n<change_request>\n${instruction}\n</change_request>`,
+    TAILORED_CV_SCHEMA,
+  ));
+}
+
+/** Four job-board queries from most specific to broadest ("rings"), for the AI search strategy. */
+export async function searchRings(profile: Profile, cvText: string, target: string, location: string): Promise<string[]> {
+  const result = await runJson<unknown>(
+    "search_strategy",
+    "You are an expert recruiter planning a job search. Produce exactly 4 search queries for job boards, from the most " +
+      "specific to the broadest, for the target role. Each query is 1 to 4 plain keywords as a recruiter would type them " +
+      "(no boolean operators, quotes or locations). Ring 1 is the exact target role; ring 2 a close synonym or the role " +
+      "plus the candidate's strongest skill; ring 3 the role family; ring 4 adjacent roles the candidate's real experience " +
+      "also qualifies for. Use the language most common for job posts in the given location.",
+    `<target_role>${target}</target_role>\n<location>${location || "remote"}</location>\n` +
+      `<candidate_profile>\n${JSON.stringify({ headline: profile.personal.headline, skills: profile.skills, experience: profile.experience.map((e) => e.role) })}\n</candidate_profile>\n` +
+      `<base_cv>\n${cvText.slice(0, 6000)}\n</base_cv>`,
+    obj({ rings: strArray }),
+  );
+  const rings = strs(asRec(result).rings).map((r) => r.replace(/["()]/g, "").trim()).filter(Boolean);
+  if (!rings.length) throw new Error("La IA no devolvió búsquedas. Intente de nuevo.");
+  return [...new Set(rings)].slice(0, 4);
 }
 
 export async function coverLetter(profile: Profile, cv: TailoredCv, job: Job): Promise<string> {

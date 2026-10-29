@@ -1,0 +1,6 @@
+.browser-bar { display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center; margin-bottom: 10px; }
+.browser h3 { margin: 18px 0 8px; font-size: 15px; }
+.browser-job {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px;
+}

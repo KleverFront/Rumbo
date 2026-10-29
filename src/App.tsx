@@ -2,6 +2,7 @@ import { isPermissionGranted, requestPermission, sendNotification } from "@tauri
 import { useEffect, useState } from "react";
 import { dueFollowUps } from "./db";
 import AdaptCv from "./screens/AdaptCv";
+import Browser from "./screens/Browser";
 import Pipeline from "./screens/Pipeline";
 import ProfileScreen from "./screens/Profile";
 import Search from "./screens/Search";
@@ -9,10 +10,11 @@ import Settings from "./screens/Settings";
 import { loadSettings, saveSettings } from "./settings";
 import "./App.css";
 
-type ScreenId = "search" | "cv" | "pipeline" | "profile" | "settings";
+type ScreenId = "search" | "browser" | "cv" | "pipeline" | "profile" | "settings";
 
 const NAV: { id: ScreenId; label: string }[] = [
   { id: "search", label: "Buscar ofertas" },
+  { id: "browser", label: "Otros portales" },
   { id: "cv", label: "Adaptar CV" },
   { id: "pipeline", label: "Postulaciones" },
   { id: "profile", label: "Mi perfil y CV base" },
@@ -64,6 +66,10 @@ export default function App() {
         {/* Search stays mounted so its results survive switching tabs; the others reload on open. */}
         <div hidden={screen !== "search"}>
           <Search active={screen === "search"} onAdapt={adapt} />
+        </div>
+        {/* Mounted while hidden too: it listens for offers imported from the portal window. */}
+        <div hidden={screen !== "browser"}>
+          <Browser onAdapt={adapt} />
         </div>
         {screen === "cv" && <AdaptCv jobId={cvJobId} onPickJob={setCvJobId} />}
         {screen === "pipeline" && <Pipeline onAdapt={adapt} />}

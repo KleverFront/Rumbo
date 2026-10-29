@@ -25,6 +25,7 @@ export const FOLLOW_UP_DAYS = 7;
 export interface Job extends Omit<JobInput, "remote"> {
   id: number;
   remote: number;
+  seen_at?: string | null;
 }
 
 export interface ApplicationCard {
@@ -72,6 +73,16 @@ export async function upsertJobs(jobs: JobInput[]): Promise<Job[]> {
   const rows = await d.select<Job[]>(`SELECT * FROM jobs WHERE id IN (${ids.join(",")})`);
   const byId = new Map(rows.map((r) => [r.id, r]));
   return ids.map((id) => byId.get(id)!);
+}
+
+/** Stamps the first time the user opened the offer (later opens keep the original date). */
+export async function markJobSeen(id: number): Promise<void> {
+  await (await getDb()).execute("UPDATE jobs SET seen_at = COALESCE(seen_at, datetime('now')) WHERE id = $1", [id]);
+}
+
+export async function listPipelineJobIds(): Promise<Set<number>> {
+  const rows = await (await getDb()).select<{ job_id: number }[]>("SELECT job_id FROM applications");
+  return new Set(rows.map((r) => r.job_id));
 }
 
 export async function setJobDescription(id: number, description: string): Promise<void> {

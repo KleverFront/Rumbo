@@ -85,6 +85,15 @@ button.link.danger { color: var(--bad); }
 .results-bar select { width: auto; margin-left: 6px; }
 .load-more { width: 100%; padding: 10px; }
 .autosave { color: var(--muted); font-size: 13px; }
+.mode { display: block; margin: 10px 0; }
+.mode select { width: auto; }
+.mode small { display: block; color: var(--muted); margin-top: 4px; }
+.ring { font-size: 11px; color: var(--accent); }
+.search-options { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+.smart { display: flex; align-items: center; gap: 8px; }
+.smart input[type="number"] { width: 70px; }
+.ring { display: block; }
+.rings { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; font-size: 13px; }
 .check { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .check input { width: auto; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }

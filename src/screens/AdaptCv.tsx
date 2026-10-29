@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { adaptCv, coverLetter, tailoredCvText, toTailoredCv, type TailoredCv } from "../ai";
+import { CV_MODES, adaptCv, coverLetter, reviseCv, tailoredCvText, toTailoredCv, type CvMode, type TailoredCv } from "../ai";
 import { exportCvPdf, safeFileName } from "../cv/pdf";
 import { getApplicationByJob, getJob, listPipelineJobs, saveTailoredCv, type Job } from "../db";
 import { atsScore } from "../match";
@@ -13,6 +13,8 @@ export default function AdaptCv({ jobId, onPickJob }: { jobId: number | null; on
   const [cv, setCv] = useState<TailoredCv | null>(null);
   const [letter, setLetter] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [mode, setMode] = useState<CvMode>("balanced");
+  const [instruction, setInstruction] = useState("");
   const [status, setStatus] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   // Results that arrive after the user picked another offer are dropped.
   const currentJob = useRef(jobId);
@@ -60,13 +62,36 @@ export default function AdaptCv({ jobId, onPickJob }: { jobId: number | null; on
 
   async function generate() {
     if (!job || !profile) return;
-    const result = await run("Adaptando su CV…", () => adaptCv(profile, baseCv?.raw_text ?? "", job));
+    const result = await run("Adaptando su CV…", () => adaptCv(profile, baseCv?.raw_text ?? "", job, mode));
     if (!result) return;
-    setCv(result);
     setLetter("");
+    await keep(result);
+  }
+
+  async function keep(result: TailoredCv) {
+    if (!job) return;
+    setCv(result);
     await run("Guardando…", () =>
       saveTailoredCv(job.id, { cv_json: JSON.stringify(result), ats_score: atsScore(jobText, tailoredCvText(result)) }));
   }
+
+  async function applyChange() {
+    if (!job || !profile || !cv || !instruction.trim()) return;
+    const result = await run("Aplicando su cambio…", () => reviseCv(profile, cv, job, instruction.trim()));
+    if (!result) return;
+    setInstruction("");
+    await keep(result);
+  }
+
+  const modePicker = (
+    <label className="mode">
+      <span>Modo de adaptación</span>
+      <select value={mode} onChange={(e) => setMode(e.target.value as CvMode)}>
+        {CV_MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+      </select>
+      <small>{CV_MODES.find((m) => m.id === mode)?.hint}</small>
+    </label>
+  );
 
   async function makeLetter() {
     if (!job || !profile || !cv) return;
@@ -107,6 +132,7 @@ export default function AdaptCv({ jobId, onPickJob }: { jobId: number | null; on
       {job && hasData && !cv && (
         <div className="empty">
           <p>Genere un CV adaptado a <b>{job.title}</b>{job.company ? ` en ${job.company}` : ""}.</p>
+          {modePicker}
           <button type="button" className="primary" disabled={!!busy} onClick={generate}>Adaptar CV</button>
         </div>
       )}
@@ -147,6 +173,16 @@ export default function AdaptCv({ jobId, onPickJob }: { jobId: number | null; on
             <div className="actions">
               <button type="button" className="primary" disabled={!!busy} onClick={exportPdf}>Exportar PDF</button>
               <button type="button" disabled={!!busy} onClick={makeLetter}>Carta de presentación</button>
+            </div>
+            <div className="lbl">Pedir cambios</div>
+            <textarea rows={3} placeholder="Ej.: resalte más mi experiencia con Odoo y acorte el resumen"
+              value={instruction} onChange={(e) => setInstruction(e.target.value)} />
+            <div className="actions">
+              <button type="button" disabled={!!busy || !instruction.trim()} onClick={applyChange}>Aplicar cambios</button>
+            </div>
+            <div className="lbl">Regenerar desde cero</div>
+            {modePicker}
+            <div className="actions">
               <button type="button" disabled={!!busy} onClick={generate}>Regenerar</button>
             </div>
           </div>

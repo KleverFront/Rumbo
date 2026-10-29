@@ -1,17 +1,21 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { dedupeKey, saveToPipeline, setJobDescription, upsertJobs, type Job } from "../db";
+import { searchRings } from "../ai";
+import { dedupeKey, listPipelineJobIds, markJobSeen, saveToPipeline, setJobDescription, upsertJobs, type Job } from "../db";
 import { atsScore, matchJob, type MatchResult } from "../match";
 import { loadBaseCv, loadProfile } from "../profile";
 import { loadSettings, saveSettings, type AppSettings } from "../settings";
 import {
-  DATE_FILTERS, SOURCES, fetchLinkedInDescription, searchSource, type JobInput, type SearchQuery,
+  DATE_FILTERS, SOURCES, WORK_MODES, fetchLinkedInDescription, searchSource,
+  type JobInput, type SearchQuery, type WorkMode,
 } from "../sources";
 
 interface Scored {
   job: Job;
   match: MatchResult;
   ats: number;
+  /** Which AI search ring found it (1 = most specific); undefined for a normal search. */
+  ring?: number;
 }
 
 type SortBy = "match" | "recent";
@@ -43,7 +47,11 @@ export default function Search({ active, onAdapt }: { active: boolean; onAdapt: 
   const [cvText, setCvText] = useState("");
   const [keywords, setKeywords] = useState("");
   const [location, setLocation] = useState("");
-  const [remoteOnly, setRemoteOnly] = useState(false);
+  const [workMode, setWorkMode] = useState<WorkMode>("any");
+  const [hideSeen, setHideSeen] = useState(true);
+  const [quota, setQuota] = useState(30);
+  const [rings, setRings] = useState<string[]>([]);
+  const [planning, setPlanning] = useState(false);
   const [maxDays, setMaxDays] = useState<number | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>("match");
   const [results, setResults] = useState<Scored[]>([]);
@@ -55,6 +63,9 @@ export default function Search({ active, onAdapt }: { active: boolean; onAdapt: 
   const [manual, setManual] = useState<typeof EMPTY_MANUAL | null>(null);
   const [loadingDesc, setLoadingDesc] = useState<number | null>(null);
   const searchRef = useRef<{ id: number; query: SearchQuery; page: number } | null>(null);
+  // Per search: dedupe keys already shown, and offers to hide (already seen or in the pipeline).
+  const shown = useRef<Set<string>>(new Set());
+  const hidden = useRef<{ enabled: boolean; pipeline: Set<number> }>({ enabled: false, pipeline: new Set() });
   const prefilled = useRef(false);
 
   // Reload profile data whenever the tab becomes visible: the user may have edited the CV meanwhile.
@@ -104,18 +115,33 @@ export default function Search({ active, onAdapt }: { active: boolean; onAdapt: 
     await saveSettings({ sources });
   }
 
-  /** Adds results without duplicating offers already shown (same company + title + city). */
-  function append(jobs: Job[]) {
-    setResults((current) => {
-      const seen = new Set(current.map((r) => dedupeKey(r.job)));
-      const fresh = jobs.filter((j) => {
-        const key = dedupeKey(j);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-      return [...current, ...fresh.map(scoreJob)];
+  /**
+   * Adds results without duplicating offers already shown (same company + title + city) and, when
+   * "ocultar vistas" is on, without offers opened before this search or already in the pipeline.
+   */
+  function append(jobs: Job[], ring?: number): number {
+    const fresh = jobs.filter((j) => {
+      const key = dedupeKey(j);
+      if (shown.current.has(key)) return false;
+      if (hidden.current.enabled && (j.seen_at || hidden.current.pipeline.has(j.id))) return false;
+      shown.current.add(key);
+      return true;
     });
+    setResults((current) => [...current, ...fresh.map((j) => ({ ...scoreJob(j), ring }))]);
+    return fresh.length;
+  }
+
+  /** Starts a new search: clears results and freezes what counts as "already seen". */
+  async function begin(query: SearchQuery) {
+    searchRef.current = { id: (searchRef.current?.id ?? 0) + 1, query, page: 0 };
+    shown.current = new Set();
+    hidden.current = { enabled: hideSeen, pipeline: hideSeen ? await listPipelineJobIds() : new Set() };
+    setResults([]);
+    setSelectedId(null);
+    setHasMore({});
+    setLoading(new Set());
+    setNotice(null);
+    return searchRef.current;
   }
 
   /** Each source loads on its own, so the fastest ones show up first. */
@@ -142,19 +168,49 @@ export default function Search({ active, onAdapt }: { active: boolean; onAdapt: 
     }
   }
 
-  function search() {
+  const baseQuery = (): SearchQuery => ({ keywords: keywords.trim(), location: location.trim(), workMode, maxDays });
+
+  async function search() {
     if (!settings || !keywords.trim()) return;
-    searchRef.current = {
-      id: (searchRef.current?.id ?? 0) + 1,
-      query: { keywords: keywords.trim(), location: location.trim(), remoteOnly, maxDays },
-      page: 0,
-    };
-    setResults([]);
-    setSelectedId(null);
-    setHasMore({});
-    setLoading(new Set());
-    setNotice(null);
+    setRings([]);
+    await begin(baseQuery());
     loadPage(enabled, 0);
+  }
+
+  /**
+   * AI search strategy ("rings", idea taken from Xolva): the AI proposes 4 queries from the most specific
+   * to the broadest; they run in order on every enabled portal until `quota` new offers are shown.
+   */
+  async function smartSearch() {
+    if (!settings || !keywords.trim()) return;
+    setPlanning(true);
+    setNotice(null);
+    let plan: string[];
+    try {
+      const [profile, cv] = await Promise.all([loadProfile(), loadBaseCv()]);
+      plan = await searchRings(profile, cv?.raw_text ?? "", keywords.trim(), location.trim());
+    } catch (e) {
+      setNotice(`No se pudo armar la búsqueda inteligente: ${e instanceof Error ? e.message : e}`);
+      return;
+    } finally {
+      setPlanning(false);
+    }
+    setRings(plan);
+    const run = await begin(baseQuery());
+    for (const [i, ring] of plan.entries()) {
+      if (shown.current.size >= quota || searchRef.current?.id !== run.id) break;
+      const query = { ...run.query, keywords: ring };
+      setLoading(new Set(enabled));
+      await Promise.allSettled(
+        enabled.map((id) =>
+          searchSource(id, query, settings, 0)
+            .then((page) => upsertJobs(page.jobs))
+            .then((jobs) => { if (searchRef.current?.id === run.id) append(jobs, i + 1); })
+            .catch((e) => setNotice((n) => [n, `${SOURCE_LABEL[id] ?? id}: ${e instanceof Error ? e.message : e}`].filter(Boolean).join(" · ")))
+            .finally(() => setLoading((l) => new Set([...l].filter((x) => x !== id)))),
+        ),
+      );
+    }
   }
 
   function loadMore() {
@@ -184,6 +240,7 @@ export default function Search({ active, onAdapt }: { active: boolean; onAdapt: 
 
   function select(s: Scored) {
     setSelectedId(s.job.id);
+    if (!s.job.seen_at) markJobSeen(s.job.id).catch(() => {}); // only feeds "ocultar vistas"; not worth an error
     ensureDescription(s);
   }
 
@@ -203,6 +260,7 @@ export default function Search({ active, onAdapt }: { active: boolean; onAdapt: 
     };
     try {
       const [job] = await upsertJobs([input]);
+      shown.current.add(dedupeKey(job));
       setResults((r) => [scoreJob(job), ...r.filter((x) => x.job.id !== job.id)]);
       setSelectedId(job.id);
       setManual(null);
@@ -247,13 +305,36 @@ export default function Search({ active, onAdapt }: { active: boolean; onAdapt: 
 
       <form className="search" onSubmit={(e) => { e.preventDefault(); search(); }}>
         <input aria-label="Cargo o palabras clave" placeholder="Cargo o palabras clave" value={keywords} onChange={(e) => setKeywords(e.target.value)} />
-        <input aria-label="Ciudad" placeholder="Ciudad" value={location} disabled={remoteOnly} onChange={(e) => setLocation(e.target.value)} />
+        <input aria-label="Ciudad" placeholder="Ciudad" value={location} disabled={workMode === "remote"} onChange={(e) => setLocation(e.target.value)} />
+        <select aria-label="Modalidad" value={workMode} onChange={(e) => setWorkMode(e.target.value as WorkMode)}>
+          {WORK_MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+        </select>
         <select aria-label="Fecha de publicación" value={maxDays ?? ""} onChange={(e) => setMaxDays(e.target.value ? Number(e.target.value) : null)}>
           {DATE_FILTERS.map((f) => <option key={f.label} value={f.days ?? ""}>{f.label}</option>)}
         </select>
-        <label className="check"><input type="checkbox" checked={remoteOnly} onChange={(e) => setRemoteOnly(e.target.checked)} /> Solo remoto</label>
         <button type="submit" className="primary" disabled={!keywords.trim() || !enabled.length}>Buscar</button>
       </form>
+
+      <div className="search-options">
+        <label className="check"><input type="checkbox" checked={hideSeen} onChange={(e) => setHideSeen(e.target.checked)} /> Ocultar ofertas ya vistas o guardadas</label>
+        <span className="smart">
+          <button type="button" disabled={planning || busy || !keywords.trim() || !enabled.length} onClick={smartSearch}>
+            {planning ? "Preparando búsquedas…" : "Búsqueda inteligente (IA)"}
+          </button>
+          <label className="check">hasta
+            <input type="number" min="5" max="200" step="5" value={quota} aria-label="Cantidad de ofertas"
+              onChange={(e) => setQuota(Math.max(5, Number(e.target.value) || 30))} />
+            ofertas
+          </label>
+        </span>
+      </div>
+
+      {rings.length > 0 && (
+        <div className="rings">
+          <span>Búsquedas de la IA, de la más precisa a la más amplia:</span>
+          {rings.map((r, i) => <span key={r} className="chip on">{i + 1}. {r}</span>)}
+        </div>
+      )}
 
       <div className="chips">
         {SOURCES.map((src) => (
@@ -317,6 +398,7 @@ export default function Search({ active, onAdapt }: { active: boolean; onAdapt: 
                   <span className="m">
                     {[r.job.company, r.job.location, SOURCE_LABEL[r.job.source] ?? r.job.source, postedLabel(r.job.posted_at)].filter(Boolean).join(" · ")}
                   </span>
+                  {r.ring && <span className="ring">Búsqueda {r.ring}: {rings[r.ring - 1]}</span>}
                 </span>
                 <span className={scoreClass(r.match.score)}>{r.match.score == null ? "—" : `${r.match.score}%`}</span>
               </button>

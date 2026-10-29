@@ -18,10 +18,19 @@ export interface JobInput {
 export interface SearchQuery {
   keywords: string;
   location: string;
-  remoteOnly: boolean;
+  workMode: WorkMode;
   /** Only offers published in the last N days; null = any date. */
   maxDays: number | null;
 }
+
+export type WorkMode = "any" | "remote" | "hybrid" | "onsite";
+
+export const WORK_MODES: { id: WorkMode; label: string }[] = [
+  { id: "any", label: "Cualquier modalidad" },
+  { id: "remote", label: "Remoto" },
+  { id: "hybrid", label: "Híbrido" },
+  { id: "onsite", label: "Presencial" },
+];
 
 export const DATE_FILTERS: { days: number | null; label: string }[] = [
   { days: null, label: "Cualquier fecha" },
@@ -81,7 +90,7 @@ interface RemotiveResponse {
 
 async function searchRemotive(q: SearchQuery, page: number): Promise<SourcePage> {
   // Remotive has no paging or date parameters: one page of up to 100, filtered here.
-  if (page > 0) return { jobs: [], hasMore: false };
+  if (page > 0 || q.workMode === "hybrid" || q.workMode === "onsite") return { jobs: [], hasMore: false }; // remote-only board
   const url = `https://remotive.com/api/remote-jobs?limit=100&search=${encodeURIComponent(q.keywords)}`;
   const data = await getJson<RemotiveResponse>(url);
   const loc = q.location.trim().toLowerCase();
@@ -103,7 +112,7 @@ async function searchRemotive(q: SearchQuery, page: number): Promise<SourcePage>
       (j) =>
         withinDays(j.posted_at, q.maxDays) &&
         // No location filter on Remotive: keep offers open worldwide/LATAM or matching the city.
-        (q.remoteOnly || !loc || /worldwide|anywhere|latam|americas/i.test(j.location) || j.location.toLowerCase().includes(loc)),
+        (q.workMode === "remote" || !loc || /worldwide|anywhere|latam|americas/i.test(j.location) || j.location.toLowerCase().includes(loc)),
     ),
   };
 }
@@ -126,8 +135,10 @@ async function searchAdzuna(q: SearchQuery, settings: AppSettings, page: number)
     app_id: appId, app_key: appKey, results_per_page: String(ADZUNA_PAGE_SIZE), what: q.keywords, "content-type": "application/json",
   });
   if (q.maxDays != null) params.set("max_days_old", String(q.maxDays));
-  if (q.location && !q.remoteOnly) params.set("where", q.location);
-  if (q.remoteOnly) params.set("what_or", "remote remoto");
+  if (q.location && q.workMode !== "remote") params.set("where", q.location);
+  // Adzuna has no work-mode filter; require one of these words instead.
+  if (q.workMode === "remote") params.set("what_or", "remote remoto teletrabajo");
+  if (q.workMode === "hybrid") params.set("what_or", "hybrid hibrido híbrido");
   const url = `https://api.adzuna.com/v1/api/jobs/${settings.adzuna_country}/search/${page + 1}?${params}`;
   const data = await getJson<AdzunaResponse>(url);
   const jobs = data.results.map((j) => {
@@ -167,8 +178,9 @@ const LINKEDIN_PAGE_SIZE = 10;
 async function searchLinkedIn(q: SearchQuery, page: number): Promise<SourcePage> {
   const params = new URLSearchParams({ keywords: q.keywords, start: String(page * LINKEDIN_PAGE_SIZE) });
   if (q.maxDays != null) params.set("f_TPR", `r${q.maxDays * 86_400}`); // "posted in the last N seconds"
-  if (q.location && !q.remoteOnly) params.set("location", q.location);
-  if (q.remoteOnly) params.set("f_WT", "2"); // LinkedIn's "remote" workplace filter
+  if (q.location && q.workMode !== "remote") params.set("location", q.location);
+  const workplace = { any: null, onsite: "1", remote: "2", hybrid: "3" }[q.workMode]; // LinkedIn's f_WT codes
+  if (workplace) params.set("f_WT", workplace);
   const doc = await getHtml(`${LINKEDIN_GUEST}/seeMoreJobPostings/search?${params}`);
   const cards = [...doc.querySelectorAll<HTMLElement>("div.base-search-card[data-entity-urn]")];
   const jobs = cards.flatMap((card): JobInput[] => {
@@ -183,7 +195,7 @@ async function searchLinkedIn(q: SearchQuery, page: number): Promise<SourcePage>
       title,
       company: text(card, ".base-search-card__subtitle"),
       location,
-      remote: q.remoteOnly || /remot/i.test(`${title} ${location ?? ""}`),
+      remote: q.workMode === "remote" || /remot/i.test(`${title} ${location ?? ""}`),
       salary_text: text(card, ".job-search-card__salary-info"),
       description: "", // fetched when the user opens the offer (fetchLinkedInDescription)
       posted_at: card.querySelector("time")?.getAttribute("datetime") ?? null,

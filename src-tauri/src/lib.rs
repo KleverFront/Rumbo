@@ -1,5 +1,7 @@
 use tauri_plugin_sql::{Migration, MigrationKind};
 
+mod browser;
+
 pub const DB_URL: &str = "sqlite:rumbo.db";
 
 const KEYCHAIN_SERVICE: &str = "com.rumbo.app";
@@ -18,6 +20,12 @@ fn migrations() -> Vec<Migration> {
             version: 2,
             description: "updated_at_triggers",
             sql: include_str!("../migrations/002_updated_at_triggers.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 3,
+            description: "jobs_seen_at",
+            sql: include_str!("../migrations/003_jobs_seen_at.sql"),
             kind: MigrationKind::Up,
         },
     ]
@@ -84,7 +92,13 @@ pub fn run() {
                 .add_migrations(DB_URL, migrations())
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![db_url, secret_get, secret_set, save_file])
+        .invoke_handler(tauri::generate_handler![
+            db_url,
+            secret_get,
+            secret_set,
+            save_file,
+            browser::browser_open
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
