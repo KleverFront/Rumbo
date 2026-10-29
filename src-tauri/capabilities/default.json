@@ -15,7 +15,8 @@
       "allow": [
         { "url": "https://remotive.com/*" },
         { "url": "https://api.adzuna.com/*" },
-        { "url": "https://api.deepseek.com/*" }
+        { "url": "https://api.deepseek.com/*" },
+        { "url": "https://www.linkedin.com/jobs-guest/*" }
       ]
     }
   ]

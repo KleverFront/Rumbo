@@ -30,6 +30,7 @@ export interface SourceInfo {
 export const SOURCES: SourceInfo[] = [
   { id: "remotive", label: "Remotive (remoto)", needsKey: false },
   { id: "adzuna", label: "Adzuna", needsKey: true },
+  { id: "linkedin", label: "LinkedIn (búsqueda pública)", needsKey: false },
 ];
 
 // Adzuna has no Ecuador index; these are the countries it covers that matter most here.
@@ -109,6 +110,53 @@ async function searchAdzuna(q: SearchQuery, settings: AppSettings): Promise<JobI
   });
 }
 
+// LinkedIn: the public, logged-out job search endpoint its own jobs page uses. One request per
+// search and one per opened offer, always user-initiated; no account, no headless browser.
+// shortcut: depends on LinkedIn's guest HTML (class names); if they change it, update these selectors.
+const LINKEDIN_GUEST = "https://www.linkedin.com/jobs-guest/jobs/api";
+
+async function getHtml(url: string): Promise<Document> {
+  const res = await fetch(url, { method: "GET", headers: { Accept: "text/html", "Accept-Language": "es-EC,es;q=0.9,en;q=0.8" } });
+  if (res.status === 429) throw new Error("LinkedIn limitó las consultas; espere unos minutos");
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return new DOMParser().parseFromString(await res.text(), "text/html");
+}
+
+const text = (root: ParentNode, selector: string) => root.querySelector(selector)?.textContent?.replace(/\s+/g, " ").trim() || null;
+
+async function searchLinkedIn(q: SearchQuery): Promise<JobInput[]> {
+  const params = new URLSearchParams({ keywords: q.keywords, start: "0" });
+  if (q.location && !q.remoteOnly) params.set("location", q.location);
+  if (q.remoteOnly) params.set("f_WT", "2"); // LinkedIn's "remote" workplace filter
+  const doc = await getHtml(`${LINKEDIN_GUEST}/seeMoreJobPostings/search?${params}`);
+  return [...doc.querySelectorAll<HTMLElement>("div.base-search-card[data-entity-urn]")].flatMap((card) => {
+    const id = card.dataset.entityUrn?.split(":").pop();
+    const title = text(card, ".base-search-card__title");
+    if (!id || !title) return [];
+    const location = text(card, ".job-search-card__location");
+    return [{
+      source: "linkedin",
+      external_id: id,
+      url: `https://www.linkedin.com/jobs/view/${id}`,
+      title,
+      company: text(card, ".base-search-card__subtitle"),
+      location,
+      remote: q.remoteOnly || /remot/i.test(`${title} ${location ?? ""}`),
+      salary_text: text(card, ".job-search-card__salary-info"),
+      description: "", // fetched when the user opens the offer (fetchLinkedInDescription)
+      posted_at: card.querySelector("time")?.getAttribute("datetime") ?? null,
+    }];
+  });
+}
+
+/** Full description of one LinkedIn offer, read from its public posting page. */
+export async function fetchLinkedInDescription(externalId: string): Promise<string> {
+  const doc = await getHtml(`${LINKEDIN_GUEST}/jobPosting/${encodeURIComponent(externalId)}`);
+  const markup = doc.querySelector(".show-more-less-html__markup");
+  if (!markup) throw new Error("LinkedIn no mostró la descripción de esta oferta");
+  return htmlToText(markup.innerHTML);
+}
+
 export interface SearchResult {
   jobs: JobInput[];
   errors: { source: string; message: string }[];
@@ -119,6 +167,7 @@ export async function searchSources(q: SearchQuery, enabled: string[], settings:
   const runners: Record<string, () => Promise<JobInput[]>> = {
     remotive: () => searchRemotive(q),
     adzuna: () => searchAdzuna(q, settings),
+    linkedin: () => searchLinkedIn(q),
   };
   const ids = enabled.filter((id) => id in runners);
   const settled = await Promise.allSettled(ids.map((id) => runners[id]()));

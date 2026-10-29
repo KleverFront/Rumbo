@@ -1,10 +1,10 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useMemo, useState } from "react";
-import { saveToPipeline, upsertJobs, type Job } from "../db";
+import { saveToPipeline, setJobDescription, upsertJobs, type Job } from "../db";
 import { atsScore, matchJob, type MatchResult } from "../match";
 import { loadBaseCv, loadProfile } from "../profile";
 import { loadSettings, saveSettings, type AppSettings } from "../settings";
-import { SOURCES, searchSources, type JobInput } from "../sources";
+import { SOURCES, fetchLinkedInDescription, searchSources, type JobInput } from "../sources";
 
 interface Scored {
   job: Job;
@@ -12,7 +12,7 @@ interface Scored {
   ats: number;
 }
 
-const SOURCE_LABEL: Record<string, string> = { remotive: "Remotive", adzuna: "Adzuna", manual: "Agregada a mano" };
+const SOURCE_LABEL: Record<string, string> = { remotive: "Remotive", adzuna: "Adzuna", linkedin: "LinkedIn", manual: "Agregada a mano" };
 
 function scoreClass(score: number | null) {
   if (score == null) return "score";
@@ -34,6 +34,7 @@ export default function Search({ onAdapt }: { onAdapt: (jobId: number) => void }
   const [notice, setNotice] = useState<string | null>(null);
   const [savedIds, setSavedIds] = useState<Set<number>>(new Set());
   const [manual, setManual] = useState<typeof EMPTY_MANUAL | null>(null);
+  const [loadingDesc, setLoadingDesc] = useState<number | null>(null);
 
   useEffect(() => {
     Promise.all([loadSettings(), loadProfile(), loadBaseCv()])
@@ -73,6 +74,7 @@ export default function Search({ onAdapt }: { onAdapt: (jobId: number) => void }
       const scored = score(await upsertJobs(jobs)).sort((a, b) => (b.match.score ?? -1) - (a.match.score ?? -1));
       setResults(scored);
       setSelectedId(scored[0]?.job.id ?? null);
+      if (scored[0]) ensureDescription(scored[0]);
       const msgs = errors.map((e) => `${SOURCE_LABEL[e.source] ?? e.source}: ${e.message}`);
       if (!scored.length) msgs.unshift("No se encontraron ofertas. Pruebe con otras palabras o active más portales.");
       setNotice(msgs.join(" · ") || null);
@@ -107,6 +109,29 @@ export default function Search({ onAdapt }: { onAdapt: (jobId: number) => void }
     }
   }
 
+  /** LinkedIn search results come without description; fetch it once, store it and rescore. */
+  async function ensureDescription(s: Scored): Promise<Scored> {
+    if (s.job.source !== "linkedin" || s.job.description) return s;
+    setLoadingDesc(s.job.id);
+    try {
+      const description = await fetchLinkedInDescription(s.job.external_id);
+      await setJobDescription(s.job.id, description);
+      const [updated] = score([{ ...s.job, description }]);
+      setResults((r) => r.map((x) => (x.job.id === updated.job.id ? updated : x)));
+      return updated;
+    } catch (e) {
+      setNotice(`LinkedIn: ${e instanceof Error ? e.message : e}`);
+      return s;
+    } finally {
+      setLoadingDesc(null);
+    }
+  }
+
+  function select(s: Scored) {
+    setSelectedId(s.job.id);
+    ensureDescription(s);
+  }
+
   async function save(s: Scored) {
     try {
       await saveToPipeline(s.job.id, s.match.score);
@@ -118,6 +143,7 @@ export default function Search({ onAdapt }: { onAdapt: (jobId: number) => void }
 
   async function adapt(s: Scored) {
     try {
+      s = await ensureDescription(s);
       await saveToPipeline(s.job.id, s.match.score);
       onAdapt(s.job.id);
     } catch (e) {
@@ -178,7 +204,7 @@ export default function Search({ onAdapt }: { onAdapt: (jobId: number) => void }
           <div className="list" role="listbox" aria-label="Resultados">
             {results.map((r) => (
               <button key={r.job.id} type="button" role="option" aria-selected={r.job.id === selectedId}
-                className={`job${r.job.id === selectedId ? " on" : ""}`} onClick={() => setSelectedId(r.job.id)}>
+                className={`job${r.job.id === selectedId ? " on" : ""}`} onClick={() => select(r)}>
                 <span>
                   <b>{r.job.title}</b>
                   <span className="m">{[r.job.company, r.job.location, SOURCE_LABEL[r.job.source] ?? r.job.source].filter(Boolean).join(" · ")}</span>
@@ -212,7 +238,9 @@ export default function Search({ onAdapt }: { onAdapt: (jobId: number) => void }
                 {selected.job.url && <button type="button" onClick={() => openUrl(selected.job.url!)}>Abrir oferta</button>}
               </div>
               <div className="lbl">Descripción</div>
-              <div className="desc">{selected.job.description}</div>
+              <div className="desc">
+                {loadingDesc === selected.job.id ? "Cargando la descripción desde LinkedIn…" : selected.job.description || "Sin descripción."}
+              </div>
             </div>
           )}
         </div>

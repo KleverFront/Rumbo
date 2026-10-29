@@ -21,7 +21,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ai_monthly_limit_usd: "10",
   ollama_url: "http://localhost:11434",
   adzuna_country: "us",
-  sources: "remotive,adzuna",
+  sources: "remotive,adzuna,linkedin",
   last_reminder_date: "",
 };
 

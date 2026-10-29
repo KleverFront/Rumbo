@@ -59,7 +59,9 @@ export async function upsertJobs(jobs: JobInput[]): Promise<Job[]> {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (source, external_id) DO UPDATE SET
          url = excluded.url, title = excluded.title, company = excluded.company, location = excluded.location,
-         remote = excluded.remote, salary_text = excluded.salary_text, description = excluded.description,
+         remote = excluded.remote, salary_text = excluded.salary_text,
+         -- a search result without description (LinkedIn) must not wipe one fetched earlier
+         description = COALESCE(NULLIF(excluded.description, ''), jobs.description),
          dedupe_key = excluded.dedupe_key, posted_at = excluded.posted_at, fetched_at = datetime('now')
        RETURNING id`,
       [j.source, j.external_id, j.url, j.title, j.company, j.location, j.remote ? 1 : 0, j.salary_text, j.description, key, j.posted_at],
@@ -70,6 +72,10 @@ export async function upsertJobs(jobs: JobInput[]): Promise<Job[]> {
   const rows = await d.select<Job[]>(`SELECT * FROM jobs WHERE id IN (${ids.join(",")})`);
   const byId = new Map(rows.map((r) => [r.id, r]));
   return ids.map((id) => byId.get(id)!);
+}
+
+export async function setJobDescription(id: number, description: string): Promise<void> {
+  await (await getDb()).execute("UPDATE jobs SET description = $1 WHERE id = $2", [description, id]);
 }
 
 export async function getJob(id: number): Promise<Job | null> {
