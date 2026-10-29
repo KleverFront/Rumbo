@@ -1,0 +1,37 @@
+/* Visual tokens taken from docs/mockup.html */
+:root {
+  --bg: #ffffff; --side: #f4f4f7; --line: #e2e2e8; --text: #1d1d1f; --muted: #6e6e78;
+  --accent: #2f6fed; --accent-soft: #e8f0ff; --bad: #d64545; --radius: 10px;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1c1f; --side: #232327; --line: #333339; --text: #f2f2f5; --muted: #9a9aa5;
+    --accent: #5b8cff; --accent-soft: #22304d; --bad: #f06a6a;
+  }
+}
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
+.app { display: grid; grid-template-columns: 220px 1fr; height: 100%; }
+.side { background: var(--side); border-right: 1px solid var(--line); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; }
+.nav {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 7px 10px; border: 0; border-radius: 7px; background: none; color: var(--text); font: inherit; cursor: pointer;
+}
+.nav:hover { background: var(--line); }
+.nav.on { background: var(--accent); color: #fff; }
+.nav:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+main { padding: 18px 22px; overflow: auto; }
+h2 { margin: 0 0 4px; font-size: 20px; }
+.sub { color: var(--muted); margin: 0 0 16px; }
+.empty { border: 2px dashed var(--line); border-radius: var(--radius); padding: 28px; text-align: center; color: var(--muted); }
+.error { color: var(--bad); }
+.kanban { display: grid; grid-template-columns: repeat(5, minmax(160px, 1fr)); gap: 10px; overflow-x: auto; }
+.col { background: var(--side); border-radius: var(--radius); padding: 10px; min-height: 420px; }
+.col h5 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; }
+.kc { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 8px; font-size: 13px; }
+.kc small { color: var(--muted); display: block; }
