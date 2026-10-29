@@ -61,7 +61,10 @@ export default function App() {
         ))}
       </aside>
       <main>
-        {screen === "search" && <Search onAdapt={adapt} />}
+        {/* Search stays mounted so its results survive switching tabs; the others reload on open. */}
+        <div hidden={screen !== "search"}>
+          <Search active={screen === "search"} onAdapt={adapt} />
+        </div>
         {screen === "cv" && <AdaptCv jobId={cvJobId} onPickJob={setCvJobId} />}
         {screen === "pipeline" && <Pipeline onAdapt={adapt} />}
         {screen === "profile" && <ProfileScreen />}

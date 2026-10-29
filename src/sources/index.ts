@@ -19,6 +19,28 @@ export interface SearchQuery {
   keywords: string;
   location: string;
   remoteOnly: boolean;
+  /** Only offers published in the last N days; null = any date. */
+  maxDays: number | null;
+}
+
+export const DATE_FILTERS: { days: number | null; label: string }[] = [
+  { days: null, label: "Cualquier fecha" },
+  { days: 1, label: "Últimas 24 horas" },
+  { days: 2, label: "Últimos 2 días" },
+  { days: 7, label: "Última semana" },
+  { days: 30, label: "Último mes" },
+];
+
+/** A page of one source; hasMore says whether asking for the next page can return more. */
+export interface SourcePage {
+  jobs: JobInput[];
+  hasMore: boolean;
+}
+
+function withinDays(postedAt: string | null, maxDays: number | null): boolean {
+  if (maxDays == null) return true;
+  if (!postedAt) return false;
+  return Date.now() - new Date(postedAt).getTime() <= maxDays * 86_400_000;
 }
 
 export interface SourceInfo {
@@ -57,10 +79,13 @@ interface RemotiveResponse {
   }[];
 }
 
-async function searchRemotive(q: SearchQuery): Promise<JobInput[]> {
-  const url = `https://remotive.com/api/remote-jobs?limit=50&search=${encodeURIComponent(q.keywords)}`;
+async function searchRemotive(q: SearchQuery, page: number): Promise<SourcePage> {
+  // Remotive has no paging or date parameters: one page of up to 100, filtered here.
+  if (page > 0) return { jobs: [], hasMore: false };
+  const url = `https://remotive.com/api/remote-jobs?limit=100&search=${encodeURIComponent(q.keywords)}`;
   const data = await getJson<RemotiveResponse>(url);
-  return data.jobs.map((j) => ({
+  const loc = q.location.trim().toLowerCase();
+  const jobs = data.jobs.map((j) => ({
     source: "remotive",
     external_id: String(j.id),
     url: j.url,
@@ -72,6 +97,15 @@ async function searchRemotive(q: SearchQuery): Promise<JobInput[]> {
     description: htmlToText(j.description),
     posted_at: j.publication_date || null,
   }));
+  return {
+    hasMore: false,
+    jobs: jobs.filter(
+      (j) =>
+        withinDays(j.posted_at, q.maxDays) &&
+        // No location filter on Remotive: keep offers open worldwide/LATAM or matching the city.
+        (q.remoteOnly || !loc || /worldwide|anywhere|latam|americas/i.test(j.location) || j.location.toLowerCase().includes(loc)),
+    ),
+  };
 }
 
 interface AdzunaResponse {
@@ -82,18 +116,21 @@ interface AdzunaResponse {
   }[];
 }
 
-async function searchAdzuna(q: SearchQuery, settings: AppSettings): Promise<JobInput[]> {
+const ADZUNA_PAGE_SIZE = 20;
+
+async function searchAdzuna(q: SearchQuery, settings: AppSettings, page: number): Promise<SourcePage> {
   const secret = await getSecret("adzuna");
   if (!secret) throw new Error("falta la clave de Adzuna en Ajustes");
   const [appId, appKey] = secret.split(":");
   const params = new URLSearchParams({
-    app_id: appId, app_key: appKey, results_per_page: "50", what: q.keywords, "content-type": "application/json",
+    app_id: appId, app_key: appKey, results_per_page: String(ADZUNA_PAGE_SIZE), what: q.keywords, "content-type": "application/json",
   });
+  if (q.maxDays != null) params.set("max_days_old", String(q.maxDays));
   if (q.location && !q.remoteOnly) params.set("where", q.location);
   if (q.remoteOnly) params.set("what_or", "remote remoto");
-  const url = `https://api.adzuna.com/v1/api/jobs/${settings.adzuna_country}/search/1?${params}`;
+  const url = `https://api.adzuna.com/v1/api/jobs/${settings.adzuna_country}/search/${page + 1}?${params}`;
   const data = await getJson<AdzunaResponse>(url);
-  return data.results.map((j) => {
+  const jobs = data.results.map((j) => {
     const salary = j.salary_min && j.salary_max ? `${Math.round(j.salary_min)}–${Math.round(j.salary_max)}` : null;
     return {
       source: "adzuna",
@@ -108,6 +145,7 @@ async function searchAdzuna(q: SearchQuery, settings: AppSettings): Promise<JobI
       posted_at: j.created ?? null,
     };
   });
+  return { jobs, hasMore: data.results.length === ADZUNA_PAGE_SIZE };
 }
 
 // LinkedIn: the public, logged-out job search endpoint its own jobs page uses. One request per
@@ -124,12 +162,16 @@ async function getHtml(url: string): Promise<Document> {
 
 const text = (root: ParentNode, selector: string) => root.querySelector(selector)?.textContent?.replace(/\s+/g, " ").trim() || null;
 
-async function searchLinkedIn(q: SearchQuery): Promise<JobInput[]> {
-  const params = new URLSearchParams({ keywords: q.keywords, start: "0" });
+const LINKEDIN_PAGE_SIZE = 10;
+
+async function searchLinkedIn(q: SearchQuery, page: number): Promise<SourcePage> {
+  const params = new URLSearchParams({ keywords: q.keywords, start: String(page * LINKEDIN_PAGE_SIZE) });
+  if (q.maxDays != null) params.set("f_TPR", `r${q.maxDays * 86_400}`); // "posted in the last N seconds"
   if (q.location && !q.remoteOnly) params.set("location", q.location);
   if (q.remoteOnly) params.set("f_WT", "2"); // LinkedIn's "remote" workplace filter
   const doc = await getHtml(`${LINKEDIN_GUEST}/seeMoreJobPostings/search?${params}`);
-  return [...doc.querySelectorAll<HTMLElement>("div.base-search-card[data-entity-urn]")].flatMap((card) => {
+  const cards = [...doc.querySelectorAll<HTMLElement>("div.base-search-card[data-entity-urn]")];
+  const jobs = cards.flatMap((card): JobInput[] => {
     const id = card.dataset.entityUrn?.split(":").pop();
     const title = text(card, ".base-search-card__title");
     if (!id || !title) return [];
@@ -147,6 +189,7 @@ async function searchLinkedIn(q: SearchQuery): Promise<JobInput[]> {
       posted_at: card.querySelector("time")?.getAttribute("datetime") ?? null,
     }];
   });
+  return { jobs, hasMore: cards.length === LINKEDIN_PAGE_SIZE };
 }
 
 /** Full description of one LinkedIn offer, read from its public posting page. */
@@ -157,31 +200,12 @@ export async function fetchLinkedInDescription(externalId: string): Promise<stri
   return htmlToText(markup.innerHTML);
 }
 
-export interface SearchResult {
-  jobs: JobInput[];
-  errors: { source: string; message: string }[];
-}
-
-/** Queries every enabled source in parallel; one failing source does not hide the others. */
-export async function searchSources(q: SearchQuery, enabled: string[], settings: AppSettings): Promise<SearchResult> {
-  const runners: Record<string, () => Promise<JobInput[]>> = {
-    remotive: () => searchRemotive(q),
-    adzuna: () => searchAdzuna(q, settings),
-    linkedin: () => searchLinkedIn(q),
-  };
-  const ids = enabled.filter((id) => id in runners);
-  const settled = await Promise.allSettled(ids.map((id) => runners[id]()));
-  const result: SearchResult = { jobs: [], errors: [] };
-  settled.forEach((s, i) => {
-    if (s.status === "fulfilled") result.jobs.push(...s.value);
-    else result.errors.push({ source: ids[i], message: s.reason instanceof Error ? s.reason.message : String(s.reason) });
-  });
-  if (q.location && !q.remoteOnly) {
-    // Remotive has no location filter; keep its offers only when they are open worldwide or match.
-    const loc = q.location.toLowerCase();
-    result.jobs = result.jobs.filter(
-      (j) => j.source !== "remotive" || /worldwide|anywhere|latam|americas/i.test(j.location ?? "") || (j.location ?? "").toLowerCase().includes(loc),
-    );
+/** One page of one source. The UI calls each source separately so results show up as they arrive. */
+export function searchSource(id: string, q: SearchQuery, settings: AppSettings, page: number): Promise<SourcePage> {
+  switch (id) {
+    case "remotive": return searchRemotive(q, page);
+    case "adzuna": return searchAdzuna(q, settings, page);
+    case "linkedin": return searchLinkedIn(q, page);
+    default: return Promise.resolve({ jobs: [], hasMore: false });
   }
-  return result;
 }

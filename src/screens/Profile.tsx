@@ -1,4 +1,4 @@
-import { useEffect, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import { parseCvToProfile } from "../ai";
 import { ACCEPTED_CV_TYPES, extractCvText } from "../cv/extract";
 import {
@@ -76,16 +76,53 @@ export default function ProfileScreen() {
   const [cv, setCv] = useState<BaseCv | null>(null);
   const [status, setStatus] = useState<{ kind: "ok" | "error" | "busy"; text: string } | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "pending" | "saving" | "saved" | "error">("idle");
+
+  // Autosave: every change is written shortly after the user stops typing, and on leaving the tab.
+  // Saves run one after another (saveChain) because each one replaces the profile lists.
+  const latest = useRef<{ profile: Profile; skillsText: string } | null>(null);
+  const dirty = useRef(false);
+  const timer = useRef<number | undefined>(undefined);
+  const saveChain = useRef<Promise<void>>(Promise.resolve());
+
+  function flush() {
+    window.clearTimeout(timer.current);
+    if (!dirty.current || !latest.current) return;
+    dirty.current = false;
+    const { profile: p, skillsText: s } = latest.current;
+    setSaveState("saving");
+    saveChain.current = saveChain.current
+      .then(() => saveProfile({ ...p, skills: uniqueCaseInsensitive(s.split(",")) }))
+      .then(() => setSaveState(dirty.current ? "pending" : "saved"))
+      .catch((e) => {
+        setSaveState("error");
+        setStatus({ kind: "error", text: `No se pudo guardar el perfil: ${e}` });
+      });
+  }
 
   useEffect(() => {
     Promise.all([loadProfile(), loadBaseCv()])
       .then(([p, c]) => {
+        latest.current = { profile: p, skillsText: p.skills.join(", ") };
         setProfile(p);
         setSkillsText(p.skills.join(", "));
         setCv(c);
       })
       .catch((e) => setStatus({ kind: "error", text: `No se pudo leer el perfil: ${e}` }));
+    return flush; // leaving the tab saves what is pending
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!profile || !latest.current) return;
+    if (latest.current.profile === profile && latest.current.skillsText === skillsText) return; // just loaded
+    latest.current = { profile, skillsText };
+    dirty.current = true;
+    setSaveState("pending");
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(flush, 700);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, skillsText]);
 
   async function importCv(file: File | undefined) {
     if (!file) return;
@@ -101,7 +138,7 @@ export default function ProfileScreen() {
     }
   }
 
-  /** Fills only what is still empty, so nothing the user typed is overwritten. Not saved until "Guardar". */
+  /** Fills only what is still empty, so nothing the user typed is overwritten. Autosave stores the result. */
   async function fillWithAi() {
     if (!profile || !cv) return;
     setStatus({ kind: "busy", text: "Leyendo su CV con IA…" });
@@ -121,7 +158,7 @@ export default function ProfileScreen() {
         };
       });
       setSkillsText((text) => uniqueCaseInsensitive([...text.split(","), ...parsed.skills]).join(", "));
-      setStatus({ kind: "ok", text: "Perfil completado desde su CV. Revíselo y pulse «Guardar perfil»." });
+      setStatus({ kind: "ok", text: "Perfil completado desde su CV y guardado. Revíselo y corrija lo que haga falta." });
     } catch (e) {
       setStatus({ kind: "error", text: e instanceof Error ? e.message : String(e) });
     }
@@ -131,20 +168,6 @@ export default function ProfileScreen() {
     e.preventDefault();
     setDragging(false);
     importCv(e.dataTransfer.files[0]);
-  }
-
-  async function onSave() {
-    if (!profile) return;
-    const next = { ...profile, skills: uniqueCaseInsensitive(skillsText.split(",")) };
-    setStatus({ kind: "busy", text: "Guardando…" });
-    try {
-      await saveProfile(next);
-      setProfile(next);
-      setSkillsText(next.skills.join(", "));
-      setStatus({ kind: "ok", text: "Perfil guardado." });
-    } catch (e) {
-      setStatus({ kind: "error", text: `No se pudo guardar: ${e}` });
-    }
   }
 
   const update = (patch: Partial<Profile>) => profile && setProfile({ ...profile, ...patch });
@@ -182,7 +205,7 @@ export default function ProfileScreen() {
       {status && <p className={`status ${status.kind}`} role="status">{status.text}</p>}
 
       {profile && (
-        <form onSubmit={(e) => { e.preventDefault(); onSave(); }}>
+        <form onSubmit={(e) => { e.preventDefault(); flush(); }}>
           <fieldset className="block">
             <legend>Datos personales</legend>
             <div className="grid">
@@ -217,8 +240,9 @@ export default function ProfileScreen() {
           <RowsEditor title="Idiomas" addLabel="Agregar idioma" cols={LANGUAGE_COLS}
             rows={profile.languages} onChange={(languages) => update({ languages })} />
 
-          <div className="savebar">
-            <button type="submit" className="primary" disabled={status?.kind === "busy"}>Guardar perfil</button>
+          <div className="savebar autosave" role="status">
+            {{ idle: "Los cambios se guardan automáticamente.", pending: "Cambios sin guardar…", saving: "Guardando…",
+               saved: "Todos los cambios están guardados.", error: "No se pudieron guardar los cambios." }[saveState]}
           </div>
         </form>
       )}

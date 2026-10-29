@@ -79,7 +79,12 @@ button.link.danger { color: var(--bad); }
 .savebar { position: sticky; bottom: 0; background: var(--bg); padding: 10px 0; border-top: 1px solid var(--line); }
 
 /* Search */
-.search { display: grid; grid-template-columns: 2fr 1fr auto auto; gap: 8px; align-items: center; margin-bottom: 10px; }
+.search { display: grid; grid-template-columns: 2fr 1fr auto auto auto; gap: 8px; align-items: center; margin-bottom: 10px; }
+.search select { width: auto; }
+.results-bar { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+.results-bar select { width: auto; margin-left: 6px; }
+.load-more { width: 100%; padding: 10px; }
+.autosave { color: var(--muted); font-size: 13px; }
 .check { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .check input { width: auto; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
