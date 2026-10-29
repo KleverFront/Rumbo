@@ -1,7 +1,8 @@
 import { useEffect, useState, type DragEvent } from "react";
+import { parseCvToProfile } from "../ai";
 import { ACCEPTED_CV_TYPES, extractCvText } from "../cv/extract";
 import {
-  loadBaseCv, loadProfile, saveBaseCv, saveProfile, uniqueCaseInsensitive,
+  PROFILE_FIELDS, loadBaseCv, loadProfile, saveBaseCv, saveProfile, uniqueCaseInsensitive,
   type BaseCv, type Education, type Experience, type Language, type Profile, type ProfileField,
 } from "../profile";
 
@@ -100,6 +101,29 @@ export default function ProfileScreen() {
     }
   }
 
+  /** Fills only what is still empty, so nothing the user typed is overwritten. Not saved until "Guardar". */
+  async function fillWithAi() {
+    if (!profile || !cv) return;
+    setStatus({ kind: "busy", text: "Leyendo su CV con IA…" });
+    try {
+      const parsed = await parseCvToProfile(cv.raw_text);
+      const personal = { ...profile.personal };
+      for (const f of PROFILE_FIELDS) if (!personal[f].trim()) personal[f] = parsed.personal[f] ?? "";
+      const skills = uniqueCaseInsensitive([...skillsText.split(","), ...parsed.skills]);
+      setProfile({
+        personal,
+        experience: profile.experience.length ? profile.experience : parsed.experience,
+        education: profile.education.length ? profile.education : parsed.education,
+        languages: profile.languages.length ? profile.languages : parsed.languages,
+        skills,
+      });
+      setSkillsText(skills.join(", "));
+      setStatus({ kind: "ok", text: "Perfil completado desde su CV. Revíselo y pulse «Guardar perfil»." });
+    } catch (e) {
+      setStatus({ kind: "error", text: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
   function onDrop(e: DragEvent) {
     e.preventDefault();
     setDragging(false);
@@ -145,6 +169,11 @@ export default function ProfileScreen() {
           </summary>
           <pre>{cv.raw_text}</pre>
         </details>
+      )}
+      {cv && profile && (
+        <button type="button" className="ai-fill" disabled={status?.kind === "busy"} onClick={fillWithAi}>
+          Completar perfil con IA desde el CV
+        </button>
       )}
 
       {status && <p className={`status ${status.kind}`} role="status">{status.text}</p>}

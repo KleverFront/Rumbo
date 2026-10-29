@@ -7,6 +7,21 @@ Local-first: data lives in SQLite under `~/Library/Application Support/com.rumbo
 - Mockup: [`docs/mockup.html`](docs/mockup.html)
 - Architecture, tools and roadmap: [`docs/arquitectura.html`](docs/arquitectura.html)
 
+## Features (v1)
+
+- **Profile** — import the base CV (PDF/DOCX), auto-fill the structured profile with AI, edit it by hand.
+- **Search** — Remotive (no key) and Adzuna (free key); paste any other offer by hand (LinkedIn, Computrabajo…).
+- **Match & ATS** — computed locally per offer: matched/missing skills and keyword coverage.
+- **Tailored CV** — AI rewrites the CV for one offer without inventing experience; cover letter; PDF export.
+- **Pipeline** — kanban by status; a macOS reminder 7 days after applying.
+- **AI providers** — Claude (default `claude-opus-5-5`, server-side refusal fallback on), Gemini or a local Ollama. Keys in the Keychain; monthly spend limit.
+
+## Setup inside the app
+
+1. *Ajustes* → paste a Claude API key (or pick Gemini/Ollama). Optional: Adzuna App ID + Key and country.
+2. *Mi perfil y CV base* → drop your CV, click *Completar perfil con IA desde el CV*, review, save.
+3. *Buscar ofertas* → search, open an offer, *Adaptar CV*, export the PDF.
+
 ## Requirements
 
 - Xcode Command Line Tools

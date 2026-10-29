@@ -53,7 +53,7 @@ ol li,ul li{margin-bottom:6px}
   <rect x="230" y="264" width="170" height="80" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="242" y="288">Motor IA</text><text x="242" y="306" class="m">interfaz única de LLM</text><text x="242" y="322" class="m">prompts + control de gasto</text>
   <rect x="414" y="264" width="170" height="80" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="426" y="288">Matching / ATS</text><text x="426" y="306" class="m">palabras clave + score</text><text x="426" y="322" class="m">(local, sin IA)</text>
   <rect x="46" y="360" width="170" height="80" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="58" y="384">CV</text><text x="58" y="402" class="m">leer PDF/DOCX → JSON</text><text x="58" y="418" class="m">plantilla → PDF</text>
-  <rect x="230" y="360" width="170" height="80" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="242" y="384">Programador</text><text x="242" y="402" class="m">búsqueda diaria</text><text x="242" y="418" class="m">+ notificaciones</text>
+  <rect x="230" y="360" width="170" height="80" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="242" y="384">Programador</text><text x="242" y="402" class="m">recordatorio diario</text><text x="242" y="418" class="m">+ notificaciones</text>
   <rect x="414" y="360" width="170" height="80" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="426" y="384">Secretos</text><text x="426" y="402" class="m">claves API en el</text><text x="426" y="418" class="m">Llavero de macOS</text>
   <rect x="46" y="456" width="538" height="58" rx="8" fill="var(--d2)" stroke="var(--d)"/>
   <text x="58" y="480" style="font-weight:600">SQLite local</text><text x="58" y="498" class="m">~/Library/Application Support/com.rumbo.app/rumbo.db — perfil, CVs, ofertas, postulaciones, gasto IA</text>
@@ -61,13 +61,13 @@ ol li,ul li{margin-bottom:6px}
   <text x="660" y="34" style="font-weight:600">Servicios externos</text>
   <rect x="660" y="50" width="300" height="200" rx="10" fill="var(--c2)" stroke="var(--c)"/>
   <text x="676" y="74" style="font-weight:600">Portales de empleo</text>
-  <text x="676" y="98">Adzuna API · Jooble API</text><text x="676" y="118">Remotive API (remoto)</text>
+  <text x="676" y="98">Adzuna API (clave gratis)</text><text x="676" y="118">Remotive API (remoto)</text>
   <text x="676" y="138">Computrabajo · Multitrabajos</text><text x="676" y="156" class="m">sin API pública: por verificar</text>
   <text x="676" y="178">Encuentra Empleo (MDT)</text>
   <text x="676" y="200">Enlace pegado (LinkedIn, etc.)</text><text x="676" y="218" class="m">se lee 1 oferta, sin scraping masivo</text>
   <rect x="660" y="270" width="300" height="150" rx="10" fill="var(--c2)" stroke="var(--c)"/>
   <text x="676" y="294" style="font-weight:600">Proveedores de IA (clave del usuario)</text>
-  <text x="676" y="318">Claude — Sonnet 5.5 / Haiku 5.5</text><text x="676" y="338">Gemini · OpenAI</text>
+  <text x="676" y="318">Claude — Opus 5.5 / Sonnet 5.5 / Haiku 5.5</text><text x="676" y="338">Gemini</text>
   <text x="676" y="358">Ollama (local, opcional)</text><text x="676" y="382" class="m">el usuario elige uno en Ajustes</text>
   <rect x="660" y="440" width="300" height="90" rx="10" fill="var(--card)" stroke="var(--line)"/>
   <text x="676" y="464" style="font-weight:600">GitHub</text><text x="676" y="486">Releases + updater firmado</text><text x="676" y="506" class="m">sin telemetría por defecto</text>
@@ -101,7 +101,7 @@ ol li,ul li{margin-bottom:6px}
 <tr><td>Crate <code>keyring</code></td><td>Guardar claves API en el Llavero</td><td>Dependencia del proyecto</td></tr>
 <tr><td><code>pdfjs-dist</code> / <code>mammoth</code></td><td>Leer CV en PDF / DOCX</td><td>Dependencias del proyecto</td></tr>
 <tr><td><code>@react-pdf/renderer</code></td><td>Generar el CV en PDF</td><td>Dependencia del proyecto</td></tr>
-<tr><td>Claves de API</td><td>Adzuna y Jooble (gratis con registro) + el proveedor de IA</td><td class="no">Por crear</td></tr>
+<tr><td>Claves de API</td><td>Adzuna (gratis con registro) + el proveedor de IA</td><td class="no">Por crear</td></tr>
 <tr><td>Apple Developer ($99/año)</td><td>Firmar y notarizar la app para distribuirla</td><td>Solo si se distribuye</td></tr>
 <tr><td>GitHub + Actions</td><td>Repositorio y builds automáticos</td><td>Al final</td></tr>
 </table>
@@ -138,9 +138,16 @@ ol li,ul li{margin-bottom:6px}
 <li><b>CV adaptado guardado por oferta:</b> la tabla <code>applications</code> guarda el JSON y el PDF generado, listos para adjuntar.</li>
 <li><b>Banco de respuestas:</b> se crea desde v1 la tabla <code>answers</code> (pregunta, respuesta, oferta), aunque todavía no tenga pantalla.</li>
 <li><b>Núcleo separado de la UI:</b> los comandos Rust (perfil, CV, IA) no dependen de React. En v2, la extensión los llama por <i>native messaging</i> o un puerto local con token.</li>
-<li><b>Motor IA con tareas nombradas</b> (<code>adapt_cv</code>, <code>cover_letter</code>, <code>skill_gap</code>). En v2 se agrega <code>answer_question</code> sin tocar lo demás.</li>
+<li><b>Motor IA con tareas nombradas</b> (<code>parse_cv</code>, <code>adapt_cv</code>, <code>cover_letter</code>; el skill gap se calcula local, sin IA). En v2 se agrega <code>answer_question</code> sin tocar lo demás.</li>
 </ul>
 </div>
+
+<h2>7. Estado de la v1 (2026-10-29)</h2>
+<div class="card"><ul>
+<li><b>Hecho:</b> perfil tipado + importar CV (PDF/DOCX) + completar perfil con IA; búsqueda en Remotive y Adzuna + oferta pegada a mano; compatibilidad y ATS locales; CV adaptado con IA, carta de presentación y PDF; kanban con estados y recordatorio de seguimiento a 7 días; claves en el Llavero; límite de gasto mensual.</li>
+<li><b>Proveedores de IA:</b> Claude (Opus 5.5 por defecto, con respaldo automático del servidor si el modelo rechaza una solicitud), Gemini y Ollama. OpenAI quedó fuera.</li>
+<li><b>Fuera de la v1:</b> Jooble, Computrabajo y Multitrabajos (falta revisar si tienen API o qué permiten sus términos; mientras tanto, «pegar oferta»); búsqueda automática diaria; resaltado de diferencias palabra por palabra entre el CV base y el adaptado; arrastrar tarjetas en el kanban; firma y notarización del .dmg.</li>
+</ul></div>
 </div>
 </body>
 </html>

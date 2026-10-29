@@ -2,6 +2,10 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 
 pub const DB_URL: &str = "sqlite:rumbo.db";
 
+const KEYCHAIN_SERVICE: &str = "com.rumbo.app";
+// Only these names can be read or written, so the UI cannot touch other Keychain items.
+const SECRET_NAMES: [&str; 3] = ["anthropic", "gemini", "adzuna"];
+
 fn migrations() -> Vec<Migration> {
     vec![
         Migration {
@@ -25,16 +29,54 @@ fn db_url() -> &'static str {
     DB_URL
 }
 
+fn keychain_entry(name: &str) -> Result<keyring::Entry, String> {
+    if !SECRET_NAMES.contains(&name) {
+        return Err(format!("unknown secret: {name}"));
+    }
+    keyring::Entry::new(KEYCHAIN_SERVICE, name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn secret_get(name: String) -> Result<Option<String>, String> {
+    match keychain_entry(&name)?.get_password() {
+        Ok(value) => Ok(Some(value)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Stores a secret in the macOS Keychain; an empty value deletes it.
+#[tauri::command]
+fn secret_set(name: String, value: String) -> Result<(), String> {
+    let entry = keychain_entry(&name)?;
+    if value.is_empty() {
+        return match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(e.to_string()),
+        };
+    }
+    entry.set_password(&value).map_err(|e| e.to_string())
+}
+
+/// Writes bytes to a path the user picked in the save dialog.
+#[tauri::command]
+fn save_file(path: String, bytes: Vec<u8>) -> Result<(), String> {
+    std::fs::write(&path, bytes).map_err(|e| format!("{path}: {e}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations(DB_URL, migrations())
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![db_url])
+        .invoke_handler(tauri::generate_handler![db_url, secret_get, secret_set, save_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
